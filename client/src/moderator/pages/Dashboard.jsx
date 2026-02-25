@@ -3,7 +3,11 @@ import useUserStore from "../../store/useUserStore";
 import useSessionStore from "../../store/useSessionStore";
 import useQueueStore from "../../store/useQueueStore";
 import useRaiseHandStore from "../../store/useRaiseHandStore";
-import { toggleRaiseHandAccess } from "../../shared/services/api";
+import {
+  toggleRaiseHandAccess,
+  saveBillData,
+  saveTeamSelection,
+} from "../../shared/services/api";
 import TopBar from "../../shared/components/TopBar";
 import FloorStatus from "../../shared/components/FloorStatus";
 import SpeakerQueue from "../components/SpeakerQueue";
@@ -14,33 +18,59 @@ import ChatPanel from "../../member/components/ChatPanel";
 import StageOverlay from "../../components/floor/StageOverlay";
 import PowerCardAnimation from "../../components/floor/PowerCardAnimation";
 import CustomSelect from "../../shared/components/CustomSelect";
+import BillSetupModal from "../components/BillSetupModal";
+import TeamSelectionModal from "../components/TeamSelectionModal";
 
 const PARTIES = ["BJP", "INC", "AAP", "TMC", "SP", "BSP"];
 
 const STAGE_OPTIONS = [
   {
-    value: "waiting_room",
-    label: "Stage 0: Waiting Room",
+    value: "WAITING",
+    label: "Stage 0: Waiting",
     description: "Members wait here",
     icon: "hourglass_empty",
   },
   {
-    value: "first_bill",
-    label: "Stage 1: First Bill",
-    description: "Initial remarks",
-    icon: "gavel",
+    value: "BILL1_SETUP",
+    label: "Stage 1: Bill 1 Setup",
+    description: "Setup first bill",
+    icon: "edit_document",
   },
   {
-    value: "one_on_one",
-    label: "Stage 2: One on One",
-    description: "Direct debate",
+    value: "BILL1_R1",
+    label: "Stage 2: Bill 1 Round 1",
+    description: "Normal debate",
     icon: "mic",
   },
   {
-    value: "third_round",
-    label: "Stage 3: Third Round",
-    description: "Final statements",
-    icon: "flag",
+    value: "BILL1_R2",
+    label: "Stage 3: Bill 1 Round 2",
+    description: "1v1 debate",
+    icon: "people",
+  },
+  {
+    value: "BILL2_SETUP_PREP",
+    label: "Stage 4: Bill 2 Setup & Prep",
+    description: "Setup & preparation timer",
+    icon: "schedule",
+  },
+  {
+    value: "BILL2_R1",
+    label: "Stage 5: Bill 2 Round 1",
+    description: "Normal debate",
+    icon: "mic",
+  },
+  {
+    value: "BILL2_R2",
+    label: "Stage 6: Bill 2 Round 2",
+    description: "1v1 debate",
+    icon: "people",
+  },
+  {
+    value: "WINNER",
+    label: "Stage 7: Winner",
+    description: "Results locked",
+    icon: "emoji_events",
   },
 ];
 
@@ -59,6 +89,10 @@ export default function ModeratorDashboard() {
     updateStage,
     initRealtimeSession,
     fetchActiveSession,
+    setBillData,
+    setTeamSelection,
+    billData,
+    stage,
   } = useSessionStore();
   const { queue, initQueueRealtime } = useQueueStore();
   const {
@@ -69,12 +103,128 @@ export default function ModeratorDashboard() {
 
   const [tab, setTab] = useState("session");
   const [togglingRaiseHand, setTogglingRaiseHand] = useState(false);
+  const [isStartingOneVsOne, setIsStartingOneVsOne] = useState(false);
+
+  // Modal states
+  const [showBillSetupModal, setShowBillSetupModal] = useState(false);
+  const [billSetupInProgress, setBillSetupInProgress] = useState(null); // { billNumber, stage }
+  const [showTeamSelectionModal, setShowTeamSelectionModal] = useState(false);
+  const [teamSelectionInProgress, setTeamSelectionInProgress] = useState(null); // { billNumber, stage }
+  const [isModalLoading, setIsModalLoading] = useState(false);
 
   // Initialize Realtime Stores on Mount
   useEffect(() => {
     initRealtimeSession();
     initQueueRealtime();
   }, [initRealtimeSession, initQueueRealtime]);
+
+  // Handle stage changes with modal logic
+  const handleStageChange = async (newStage) => {
+    // Determine if this stage requires bill setup or team selection
+    const requiresBillSetup = ["BILL1_SETUP", "BILL2_SETUP_PREP"].includes(
+      newStage,
+    );
+    const requiresTeamSelection = ["BILL1_R2", "BILL2_R2"].includes(newStage);
+
+    if (requiresBillSetup) {
+      // Check if bill data already exists
+      const billNumber = newStage === "BILL1_SETUP" ? 1 : 2;
+      const billDataExists =
+        billNumber === 1
+          ? billData.bill1.name && billData.bill1.summary
+          : billData.bill2.name && billData.bill2.summary;
+
+      if (!billDataExists) {
+        // Show bill setup modal
+        setBillSetupInProgress({ billNumber, stage: newStage });
+        setShowBillSetupModal(true);
+        return; // Don't change stage yet
+      }
+    }
+
+    if (requiresTeamSelection) {
+      // Show team selection modal
+      const billNumber = newStage === "BILL1_R2" ? 1 : 2;
+      setTeamSelectionInProgress({ billNumber, stage: newStage });
+      setShowTeamSelectionModal(true);
+      return; // Don't change stage yet
+    }
+
+    // Otherwise, proceed normally
+    await updateStage(newStage);
+  };
+
+  // Handle bill setup modal submit
+  const handleBillSetupSubmit = async (data) => {
+    setIsModalLoading(true);
+    try {
+      // Save bill data to store
+      setBillData(data.billNumber, data.billName, data.billSummary);
+
+      // Persist to database
+      if (session?.id) {
+        await saveBillData(
+          session.id,
+          data.billNumber,
+          data.billName,
+          data.billSummary,
+        );
+      }
+
+      // Close modal
+      setShowBillSetupModal(false);
+
+      // Now actually change stage
+      const stage = billSetupInProgress?.stage;
+      if (stage) {
+        await updateStage(stage);
+      }
+
+      // Reset
+      setBillSetupInProgress(null);
+    } catch (error) {
+      console.error("Failed to setup bill:", error);
+      alert("Failed to setup bill. Please try again.");
+    } finally {
+      setIsModalLoading(false);
+    }
+  };
+
+  // Handle team selection modal submit
+  const handleTeamSelectionSubmit = async (data) => {
+    setIsModalLoading(true);
+    try {
+      // Save team selection to store
+      setTeamSelection(data.billNumber, data.teamA, data.teamB);
+
+      // Persist to database
+      if (session?.id) {
+        await saveTeamSelection(
+          session.id,
+          data.billNumber,
+          data.teamA,
+          data.teamB,
+        );
+      }
+
+      // Close modal
+      setShowTeamSelectionModal(false);
+
+      // Now actually change stage
+      const stage = teamSelectionInProgress?.stage;
+      if (stage) {
+        await updateStage(stage);
+      }
+
+      // Reset
+      setTeamSelectionInProgress(null);
+    } catch (error) {
+      console.error("Failed to select teams:", error);
+      alert("Failed to select teams. Please try again.");
+    } finally {
+      setIsModalLoading(false);
+    }
+  };
 
   // Toggle raise hand access (frontend state + backend enforcement)
   const handleToggleRaiseHandAccess = async () => {
@@ -274,8 +424,8 @@ export default function ModeratorDashboard() {
                   </div>
                   <div className="z-50 relative">
                     <CustomSelect
-                      value={session?.stage || "first_bill"}
-                      onChange={updateStage}
+                      value={stage || session?.stage || "WAITING"}
+                      onChange={handleStageChange}
                       options={STAGE_OPTIONS}
                     />
                   </div>
@@ -310,6 +460,113 @@ export default function ModeratorDashboard() {
                   </button>
                 </section>
               )}
+
+              {/* 1v1 Debate Control — only for Stage 3 & 6 */}
+              {role === "moderator" &&
+                (stage === "BILL1_R2" || stage === "BILL2_R2") && (
+                  <section className="bg-white rounded-xl p-4 shadow-soft border border-purple-100 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:shadow-md relative">
+                    <div>
+                      <h2 className="text-sm font-bold text-neutral-dark flex items-center gap-2">
+                        <span className="material-symbols-outlined text-purple-500 bg-purple-50 p-1.5 rounded-lg">
+                          sports_mma
+                        </span>
+                        1v1 Debate Round
+                      </h2>
+                      <p className="text-xs text-gray-500 font-medium mt-1">
+                        Select Challenger and Opponent via the 1v1 modal, then start
+                        a 3-minute face-off.
+                      </p>
+                      {(() => {
+                        const key =
+                          stage === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
+                        const selection =
+                          session?.team_selections?.[key] || {};
+                        const challenger = selection.teamA || null;
+                        const opponent = selection.teamB || null;
+
+                        return (
+                          <div className="mt-3 text-xs text-gray-600 space-y-1">
+                            <p>
+                              <span className="font-semibold text-gray-500">
+                                Challenger:
+                              </span>{" "}
+                              <span className="font-bold text-neutral-dark">
+                                {challenger || "Not selected"}
+                              </span>
+                            </p>
+                            <p>
+                              <span className="font-semibold text-gray-500">
+                                Opponent:
+                              </span>{" "}
+                              <span className="font-bold text-neutral-dark">
+                                {opponent || "Not selected"}
+                              </span>
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {(() => {
+                      const key =
+                        stage === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
+                      const selection =
+                        session?.team_selections?.[key] || {};
+                      const challenger = selection.teamA || null;
+                      const opponent = selection.teamB || null;
+                      const canStart = !!challenger && !!opponent;
+
+                      const handleStartOneVsOne = async () => {
+                        if (!session?.id || !canStart) return;
+                        setIsStartingOneVsOne(true);
+                        try {
+                          const startTime = Date.now();
+                          try {
+                            await supabase.channel("one-vs-one").send({
+                              type: "broadcast",
+                              event: "one_vs_one_start",
+                              payload: {
+                                sessionId: session.id,
+                                stage,
+                                startTime,
+                              },
+                            });
+                          } catch (broadcastErr) {
+                            console.error(
+                              "Failed to broadcast 1v1 start event:",
+                              broadcastErr,
+                            );
+                          }
+                        } finally {
+                          setIsStartingOneVsOne(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={handleStartOneVsOne}
+                          disabled={!canStart || isStartingOneVsOne}
+                          className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:scale-[0.97] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                        >
+                          {isStartingOneVsOne ? (
+                            <>
+                              <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Starting…
+                            </>
+                          ) : (
+                            <>
+                              <span className="material-symbols-outlined text-sm">
+                                start
+                              </span>
+                              Start 1v1 Debate
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
+                  </section>
+                )}
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <SpeakerQueue />
@@ -384,6 +641,23 @@ export default function ModeratorDashboard() {
           ))}
         </div>
       </nav>
+
+      {/* Modals */}
+      <BillSetupModal
+        isOpen={showBillSetupModal}
+        onClose={() => setShowBillSetupModal(false)}
+        onSubmit={handleBillSetupSubmit}
+        billNumber={billSetupInProgress?.billNumber || 1}
+        isLoading={isModalLoading}
+      />
+
+      <TeamSelectionModal
+        isOpen={showTeamSelectionModal}
+        onClose={() => setShowTeamSelectionModal(false)}
+        onSubmit={handleTeamSelectionSubmit}
+        billNumber={teamSelectionInProgress?.billNumber || 1}
+        isLoading={isModalLoading}
+      />
     </div>
   );
 }

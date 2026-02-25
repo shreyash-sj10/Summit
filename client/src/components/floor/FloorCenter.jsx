@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import useSessionStore from '../../store/useSessionStore';
 import TimerDisplay from './TimerDisplay';
+import { getStageBehavior } from '../../shared/utils/stageBehaviors';
 
 export default function FloorCenter() {
     const {
@@ -18,11 +19,7 @@ export default function FloorCenter() {
     const isUrgent = timeRemaining <= 10 && isTimerRunning;
     const isFrozen = !!(interruptInfo || challengeInfo);
 
-    const stageLabel = {
-        first_bill: 'First Bill',
-        one_on_one: 'One on One',
-        third_round: 'Third Round'
-    }[stage] || stage;
+    const stageLabel = getStageBehavior(stage)?.label || stage;
 
     const statusLabel = interruptInfo
         ? 'Interrupted'

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useSessionStore from '../../store/useSessionStore';
+import { getStageBehavior } from '../../shared/utils/stageBehaviors';
 
 export default function StageOverlay() {
     const { stage } = useSessionStore();
@@ -9,15 +10,9 @@ export default function StageOverlay() {
     const [label, setLabel] = useState('');
     const timerRef = useRef(null);
 
-    const stageNames = {
-        first_bill: 'Stage 1: First Bill',
-        one_on_one: 'Stage 2: One on One',
-        third_round: 'Stage 3: Third Round'
-    };
-
     useEffect(() => {
         if (prevStage.current !== stage && prevStage.current !== null) {
-            setLabel(stageNames[stage] || stage);
+            setLabel(getStageBehavior(stage)?.label || stage);
             setShow(true);
             if (timerRef.current) clearTimeout(timerRef.current);
             timerRef.current = setTimeout(() => setShow(false), 3000);

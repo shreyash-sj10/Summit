@@ -33,12 +33,8 @@ export default function MemberDashboard() {
     initRealtimeSession,
   } = useSessionStore();
   const { queue, initQueueRealtime } = useQueueStore();
-  const {
-    isWindowActive,
-    timeRemaining,
-    setWindowState,
-    setTimeRemaining,
-  } = useRaiseHandWindowStore();
+  const { isWindowActive, timeRemaining, setWindowState, setTimeRemaining } =
+    useRaiseHandWindowStore();
 
   const [partyDetails, setPartyDetails] = useState(undefined); // undefined = loading, null = not found
   const [tab, setTab] = useState("home");
@@ -75,14 +71,10 @@ export default function MemberDashboard() {
   useEffect(() => {
     const channel = supabase
       .channel("raise-hand-updates")
-      .on(
-        "broadcast",
-        { event: "window_state_changed" },
-        (payload) => {
-          const { isEnabled, isWindowActive, timeRemaining } = payload.payload;
-          setWindowState(isEnabled, isWindowActive, timeRemaining);
-        }
-      )
+      .on("broadcast", { event: "window_state_changed" }, (payload) => {
+        const { isEnabled, isWindowActive, timeRemaining } = payload.payload;
+        setWindowState(isEnabled, isWindowActive, timeRemaining);
+      })
       .subscribe();
 
     return () => {
@@ -95,8 +87,11 @@ export default function MemberDashboard() {
     const pollWindowStatus = async () => {
       try {
         const res = await getRaiseHandStatus();
-        const { isEnabled, isWindowActive: active, timeRemaining: remaining } =
-          res.data;
+        const {
+          isEnabled,
+          isWindowActive: active,
+          timeRemaining: remaining,
+        } = res.data;
         setWindowState(isEnabled, active, remaining);
       } catch (err) {
         console.error("Failed to poll raise hand status:", err);
@@ -233,8 +228,8 @@ export default function MemberDashboard() {
     </aside>
   );
 
-  // If stage is waiting_room, take over the entire screen for the user
-  if (session?.stage === "waiting_room") {
+  // If stage is WAITING, take over the entire screen for the user
+  if (session?.stage === "WAITING") {
     return <WaitingRoom />;
   }
 

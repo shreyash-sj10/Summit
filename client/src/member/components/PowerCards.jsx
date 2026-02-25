@@ -5,7 +5,7 @@ const CARD_DATA = {
     'interrupt': {
         icon: 'flash_on',
         name: 'Interrupt',
-        desc: 'Pause the current speaker & take the floor for 20s. (Valid in Stage 1 & 3)',
+        desc: 'Pause the current speaker & take the floor for 20s. (Not valid in 1v1 stages)',
         color: 'bg-amber-100 text-amber-700',
         ring: 'ring-amber-300'
     },
@@ -19,7 +19,7 @@ const CARD_DATA = {
     'challenge': {
         icon: 'sports_mma',
         name: 'Challenge',
-        desc: 'Challenge a speaker for a 1.5 - 2min face-off. (Valid in Stage 2 Only)',
+        desc: 'Challenge a speaker for a 1.5 - 2min face-off. (Valid only in 1v1 stages)',
         color: 'bg-rose-100 text-rose-700',
         ring: 'ring-rose-300'
     }
@@ -35,13 +35,15 @@ export default function PowerCards({ cards, session, onUpdate }) {
         setError('');
 
         // Basic frontend validation
-        if (card.card_type === 'challenge' && session?.stage !== 'one_on_one') {
-            setError('Challenge card can only be used during One on One stage.');
+        const is1v1Stage = session?.stage === 'BILL1_R2' || session?.stage === 'BILL2_R2';
+
+        if (card.card_type === 'challenge' && !is1v1Stage) {
+            setError('Challenge card can only be used during 1v1 stages.');
             return;
         }
 
-        if (card.card_type === 'interrupt' && session?.stage === 'one_on_one') {
-            setError('Interrupt card cannot be used during One on One stage.');
+        if (card.card_type === 'interrupt' && is1v1Stage) {
+            setError('Interrupt card cannot be used during 1v1 stages.');
             return;
         }
 

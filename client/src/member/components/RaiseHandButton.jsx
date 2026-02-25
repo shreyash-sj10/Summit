@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { raiseHand, lowerHand } from "../../shared/services/api";
 import useRaiseHandStore from "../../store/useRaiseHandStore";
 import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
