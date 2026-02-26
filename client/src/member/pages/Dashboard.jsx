@@ -3,6 +3,7 @@ import useUserStore from "../../store/useUserStore";
 import useSessionStore from "../../store/useSessionStore";
 import useQueueStore from "../../store/useQueueStore";
 import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
+import { MAX_SPEECHES_PER_BILL } from "../../shared/constants";
 import BillAnnouncement from "../components/BillAnnouncement";
 import OneVsOneLayout from "../components/OneVsOneLayout";
 import NormalDebateLayout from "../components/NormalDebateLayout";
@@ -147,7 +148,10 @@ export default function MemberDashboard() {
     loadParty,
   ]);
 
-  const speechesLeft = Math.max(0, 2 - (user?.speeches_count || 0));
+  const speechesLeft = Math.max(
+    0,
+    MAX_SPEECHES_PER_BILL - (user?.speeches_count || 0),
+  );
 
   // Manage local 1v1 state only for BILL1_R2 / BILL2_R2
   // On stage entry, default to SELECTION unless a valid start timestamp exists (refresh case)
@@ -382,12 +386,20 @@ export default function MemberDashboard() {
               <span className="text-xl font-black text-neutral-dark">
                 {speechesLeft}
               </span>
-              <span className="text-sm font-bold text-gray-400">/ 2</span>
+              <span className="text-sm font-bold text-gray-400">
+                / {MAX_SPEECHES_PER_BILL}
+              </span>
             </div>
             <div className="h-1.5 w-full bg-gray-200 rounded-full mt-2 overflow-hidden shadow-inner">
               <div
                 className="h-full bg-accent transition-all duration-500"
-                style={{ width: `${(speechesLeft / 2) * 100}%` }}
+                style={{
+                  width: `${
+                    ((MAX_SPEECHES_PER_BILL - speechesLeft) /
+                      MAX_SPEECHES_PER_BILL) *
+                    100
+                  }%`,
+                }}
               />
             </div>
           </div>

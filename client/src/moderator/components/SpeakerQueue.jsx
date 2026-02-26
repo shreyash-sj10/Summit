@@ -1,6 +1,7 @@
 import useQueueStore from '../../store/useQueueStore';
 import useUserStore from '../../store/useUserStore';
 import useSessionStore from '../../store/useSessionStore';
+import { MAX_SPEECHES_PER_BILL } from '../../shared/constants';
 
 const DONE_UNLOCK_SECONDS = 60; // 1 minute
 
@@ -159,7 +160,7 @@ export default function SpeakerQueue() {
                         </div>
                     )}
                     {waiting.slice(0, 10).map((entry, idx) => {
-                        const chancesAvailable = Math.max(0, 2 - (entry.member?.speeches_count || 0));
+                        const chancesAvailable = Math.max(0, MAX_SPEECHES_PER_BILL - (entry.member?.speeches_count || 0));
                         return (
                             <div key={entry.id} className="group flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 shadow-soft hover:shadow-md transition-all">
                                 <div className="flex items-center gap-3">

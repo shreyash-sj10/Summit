@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { raiseHand } from "../../shared/services/api";
+import { MAX_SPEECHES_PER_BILL } from "../../shared/constants";
 import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
 import useSessionStore from "../../store/useSessionStore";
 
@@ -13,12 +14,13 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
   const isSpeaking = queueEntry?.status === "speaking";
   const speechesLeft = Math.max(
     0,
-    2 - (queueEntry?.member?.speeches_count || 0),
+    MAX_SPEECHES_PER_BILL - (queueEntry?.member?.speeches_count || 0),
   );
   const noChancesLeft = speechesLeft === 0;
 
   // Derive raise-hand enabled flag from server-updated window store
   const raiseHandEnabled = Boolean(isEnabled);
+  const windowOpen = Boolean(isWindowActive) && (timeRemaining || 0) > 0;
 
   // Allowed stages guard
   const allowedStages = new Set([
@@ -38,7 +40,13 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
   }, [isWindowActive, raiseHandEnabled, stageAllowed]);
 
   async function handleRaise(e) {
-    if (noChancesLeft || !raiseHandEnabled || teamHasPressed || !stageAllowed) {
+    if (
+      noChancesLeft ||
+      !raiseHandEnabled ||
+      !windowOpen ||
+      teamHasPressed ||
+      !stageAllowed
+    ) {
       e?.preventDefault?.();
       e?.stopPropagation?.();
       return;
@@ -84,7 +92,7 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
   }
 
   // Stage guard or disabled by server -> Disabled state (gray)
-  if (!stageAllowed || !raiseHandEnabled) {
+  if (!stageAllowed || !raiseHandEnabled || !windowOpen) {
     return (
       <button
         disabled
@@ -100,11 +108,15 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
             front_hand
           </span>
           <span className="bg-white/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest text-gray-500">
-            Cannot Raise Hand
+            {stageAllowed && raiseHandEnabled && !windowOpen
+              ? "Window Closed"
+              : "Cannot Raise Hand"}
           </span>
         </div>
         <span className="text-xs font-medium text-gray-500 mt-2">
-          You can raise your hand only during active debate stages.
+          {stageAllowed && raiseHandEnabled && !windowOpen
+            ? "Wait for the moderator's 5-second buzzer window."
+            : "You can raise your hand only during active debate stages."}
         </span>
       </button>
     );

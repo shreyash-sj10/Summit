@@ -9,6 +9,8 @@ import {
   isBillStageValidForSubmission,
 } from "../utils/stageRuntime.js";
 
+const RAISE_WINDOW_DURATION = 5000;
+
 // Broadcast helper
 async function broadcastRaiseHandWindowState(
   sessionId,
@@ -290,10 +292,10 @@ router.patch("/raise-hand", authMiddleware, async (req, res) => {
     // Store in memory
     raiseHandAccessStore.set(session.id, raise_hand_enabled);
 
-    // If enabling, create a new 5-second window
+    // If enabling, create a new raise-hand window
     if (raise_hand_enabled) {
       const now = Date.now();
-      const windowEnd = now + 5000; // 5 seconds
+      const windowEnd = now + RAISE_WINDOW_DURATION;
       raiseHandWindowStore.set(session.id, {
         windowStart: now,
         windowEnd,
@@ -301,17 +303,21 @@ router.patch("/raise-hand", authMiddleware, async (req, res) => {
       });
 
       // Broadcast window activation
-      await broadcastRaiseHandWindowState(session.id, true, true, 5000);
+      await broadcastRaiseHandWindowState(
+        session.id,
+        true,
+        true,
+        RAISE_WINDOW_DURATION,
+      );
 
-      // Auto-expire window after 5 seconds (server-authoritative)
+      // Auto-expire window after configured duration (server-authoritative)
       setTimeout(() => {
         if (raiseHandWindowStore.has(session.id)) {
           raiseHandWindowStore.delete(session.id);
         }
-        raiseHandAccessStore.set(session.id, false);
-        // Broadcast window expiration
-        broadcastRaiseHandWindowState(session.id, false, false, 0);
-      }, 5000);
+        // Keep access flag as last chosen value but mark window inactive
+        broadcastRaiseHandWindowState(session.id, true, false, 0);
+      }, RAISE_WINDOW_DURATION);
     } else {
       // If disabling, clear the window
       raiseHandWindowStore.delete(session.id);
