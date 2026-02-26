@@ -4,14 +4,15 @@ import Landing from './pages/Landing';
 import MemberDashboard from './member/pages/Dashboard';
 import ModeratorDashboard from './moderator/pages/Dashboard';
 import DisplayDashboard from './display/pages/Dashboard';
+import ProjectionPage from './display/pages/ProjectionPage';
 
 function ProtectedRoute({ children, requiredRole }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/" replace />;
 
-  // DASHMOD can only access display dashboard
+  // DASHMOD can only access projection dashboard
   if (user.member_id === 'DASHMOD' && requiredRole !== 'display') {
-    return <Navigate to="/display" replace />;
+    return <Navigate to="/projection" replace />;
   }
 
   if (requiredRole === 'moderator' && user.role !== 'moderator' && user.role !== 'judge') {
@@ -30,10 +31,10 @@ function RootRedirect() {
   const { user } = useAuth();
   if (!user) return <Landing />;
 
-  // DASHMOD always goes to display dashboard
-  if (user.member_id === 'DASHMOD') return <Navigate to="/display" replace />;
+  // DASHMOD and all display roles always go to projection dashboard
+  if (user.member_id === 'DASHMOD') return <Navigate to="/projection" replace />;
 
-  if (user.role === 'display') return <Navigate to="/display" replace />;
+  if (user.role === 'display') return <Navigate to="/projection" replace />;
   if (user.role === 'moderator' || user.role === 'judge') return <Navigate to="/moderator" replace />;
 
   return <Navigate to="/member" replace />;
@@ -65,7 +66,15 @@ export default function App() {
             path="/display"
             element={
               <ProtectedRoute requiredRole="display">
-                <DisplayDashboard />
+                <Navigate to="/projection" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/projection"
+            element={
+              <ProtectedRoute requiredRole="display">
+                <ProjectionPage />
               </ProtectedRoute>
             }
           />

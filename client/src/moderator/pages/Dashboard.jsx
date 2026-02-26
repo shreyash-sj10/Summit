@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useUserStore from "../../store/useUserStore";
 import useSessionStore from "../../store/useSessionStore";
 import useQueueStore from "../../store/useQueueStore";
@@ -132,6 +132,19 @@ export default function ModeratorDashboard() {
   const isOneVsOneActive =
     (stage === "BILL1_R2" || stage === "BILL2_R2") &&
     oneVsOneState === "ACTIVE";
+
+  const oneVsOneTeams = useMemo(() => {
+    const unique = new Set();
+    (queue || []).forEach((entry) => {
+      const team =
+        entry.member?.party ||
+        entry.member?.team_name ||
+        entry.member?.team ||
+        entry.member?.id;
+      if (team) unique.add(team);
+    });
+    return Array.from(unique);
+  }, [queue]);
 
   // Initialize Realtime Stores on Mount
   useEffect(() => {
@@ -711,12 +724,56 @@ export default function ModeratorDashboard() {
                       1v1 Debate Round
                     </h2>
                     {oneVsOneState === "SELECTION" && (
-                      <div>
+                      <div className="space-y-3">
                         {!challengerTeam && !opponentTeam && (
                           <p className="text-gray-500">
-                            Teams will be chosen after buzzer.
+                            Teams will be chosen after buzzer or manually using
+                            the selectors below.
                           </p>
                         )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                              Challenger Team
+                            </label>
+                            <select
+                              value={challengerTeam || ""}
+                              onChange={(e) =>
+                                setChallengerTeam(e.target.value || "")
+                              }
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-saffron/30 focus:border-saffron"
+                            >
+                              <option value="">Select team…</option>
+                              {oneVsOneTeams.map((team) => (
+                                <option key={team} value={team}>
+                                  {team}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                              Opponent Team
+                            </label>
+                            <select
+                              value={opponentTeam || ""}
+                              onChange={(e) =>
+                                setOpponentTeam(e.target.value || "")
+                              }
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-saffron/30 focus:border-saffron"
+                            >
+                              <option value="">Select team…</option>
+                              {oneVsOneTeams.map((team) => (
+                                <option key={team} value={team}>
+                                  {team}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
                         {challengerTeam && (
                           <p className="text-gray-700 font-medium">
                             Challenger Selected: {challengerTeam}
@@ -728,7 +785,6 @@ export default function ModeratorDashboard() {
                           </p>
                         )}
 
-                        {/* Moderator Start button - only enabled when both teams selected */}
                         {role === "moderator" && (
                           <div className="mt-3">
                             <button
@@ -738,7 +794,11 @@ export default function ModeratorDashboard() {
                                 !opponentTeam ||
                                 _isStartingOneVsOne
                               }
-                              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${!challengerTeam || !opponentTeam ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-saffron text-white hover:opacity-95"}`}
+                              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                                !challengerTeam || !opponentTeam
+                                  ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                  : "bg-saffron text-white hover:opacity-95"
+                              }`}
                             >
                               {_isStartingOneVsOne
                                 ? "Starting..."
