@@ -2,6 +2,7 @@ import express from "express";
 import { supabase } from "../supabase.js";
 import { authMiddleware, moderatorOnly } from "../middleware/auth.js";
 import { raiseHandAccessStore, raiseHandWindowStore } from "../index.js";
+import { MAX_SPEECHES_PER_BILL } from "../config/constants.js";
 
 const router = express.Router();
 
@@ -67,8 +68,8 @@ router.post("/raise", authMiddleware, async (req, res) => {
   // Priority score: fewer speeches = lower number = higher priority
   const speechCount = req.user.speeches_count || 0;
 
-  // Check if user has exhausted speeches (max 2 chances)
-  if (speechCount >= 2) {
+  // Check if user has exhausted speeches (max allowed per bill)
+  if (speechCount >= MAX_SPEECHES_PER_BILL) {
     return res.status(403).json({ error: "You have no chances left to speak" });
   }
 

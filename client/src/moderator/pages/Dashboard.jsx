@@ -3,6 +3,7 @@ import useUserStore from "../../store/useUserStore";
 import useSessionStore from "../../store/useSessionStore";
 import useQueueStore from "../../store/useQueueStore";
 import useRaiseHandStore from "../../store/useRaiseHandStore";
+import { supabase } from "../../shared/services/supabase";
 import {
   toggleRaiseHandAccess,
   saveBillData,
@@ -95,15 +96,10 @@ export default function ModeratorDashboard() {
     stage,
   } = useSessionStore();
   const { queue, initQueueRealtime } = useQueueStore();
-  const {
-    raiseHandEnabled,
-    toggleRaiseHandAccess: toggleStoreRaiseHand,
-    setRaiseHandAccess,
-  } = useRaiseHandStore();
+  const { raiseHandEnabled, setRaiseHandAccess } = useRaiseHandStore();
 
   const [tab, setTab] = useState("session");
   const [togglingRaiseHand, setTogglingRaiseHand] = useState(false);
-  const [isStartingOneVsOne, setIsStartingOneVsOne] = useState(false);
 
   // Modal states
   const [showBillSetupModal, setShowBillSetupModal] = useState(false);
@@ -112,19 +108,110 @@ export default function ModeratorDashboard() {
   const [teamSelectionInProgress, setTeamSelectionInProgress] = useState(null); // { billNumber, stage }
   const [isModalLoading, setIsModalLoading] = useState(false);
 
+  // Local 1v1 state (BILL1_R2 / BILL2_R2 only)
+  const [oneVsOneState, setOneVsOneState] = useState(null); // "SELECTION" | "ACTIVE" | null
+  const [challengerTeam, setChallengerTeam] = useState("");
+  const [opponentTeam, setOpponentTeam] = useState("");
+  const [_isStartingOneVsOne, _setIsStartingOneVsOne] = useState(false);
+
+  // Define isStageBlocked to prevent the ReferenceError
+  const isStageBlocked = new Set([
+    "WAITING",
+    "BILL1_SETUP",
+    "BILL2_SETUP_PREP",
+    "WINNER",
+  ]).has(stage);
+
+  // Define timer with a default value to prevent the ReferenceError
+  const timer = 0; // Replace with actual logic if needed
+  // Define isOneVsOneActive to prevent the ReferenceError
+  const isOneVsOneActive =
+    (stage === "BILL1_R2" || stage === "BILL2_R2") &&
+    oneVsOneState === "ACTIVE";
+
   // Initialize Realtime Stores on Mount
   useEffect(() => {
     initRealtimeSession();
     initQueueRealtime();
   }, [initRealtimeSession, initQueueRealtime]);
 
+  // Keep moderator's local raise hand toggle in sync with backend 5s window lifecycle
+  useEffect(() => {
+    const channel = supabase
+      .channel("raise-hand-updates")
+      .on("broadcast", { event: "window_state_changed" }, (payload) => {
+        const { isEnabled } = payload.payload || {};
+        if (typeof isEnabled === "boolean") {
+          setRaiseHandAccess(isEnabled);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [setRaiseHandAccess]);
+
+  // Manage local 1v1 state only when in BILL1_R2 / BILL2_R2
+  useEffect(() => {
+    const isOneVsOneStage = stage === "BILL1_R2" || stage === "BILL2_R2";
+
+    if (!isOneVsOneStage) {
+      setOneVsOneState(null);
+      setChallengerTeam("");
+      setOpponentTeam("");
+      _setIsStartingOneVsOne(false);
+      return;
+    }
+
+    // Enter SELECTION mode on stage entry
+    setOneVsOneState("SELECTION");
+    setChallengerTeam("");
+    setOpponentTeam("");
+  }, [stage]);
+
+  // Auto-disable raise hand access in stages where buzzer is not needed
+  useEffect(() => {
+    const disabledStages = new Set([
+      "WAITING", // Stage 0
+      "BILL1_SETUP", // Stage 1
+      "BILL2_SETUP_PREP", // Stage 4
+      "WINNER", // Stage 7
+    ]);
+
+    if (!session?.id) return;
+    if (!disabledStages.has(stage)) return;
+    if (!raiseHandEnabled) return;
+
+    (async () => {
+      try {
+        await toggleRaiseHandAccess(false);
+        setRaiseHandAccess(false);
+      } catch (err) {
+        console.error(
+          "Failed to auto-disable raise hand access for stage",
+          stage,
+          err,
+        );
+      }
+    })();
+  }, [stage, session?.id, raiseHandEnabled, setRaiseHandAccess]);
+
   // Handle stage changes with modal logic
   const handleStageChange = async (newStage) => {
-    // Determine if this stage requires bill setup or team selection
+    // Prevent stage changes while 1v1 debate is active
+    if (
+      (stage === "BILL1_R2" || stage === "BILL2_R2") &&
+      oneVsOneState === "ACTIVE"
+    ) {
+      alert("Cannot change stage while a 1v1 debate is active.");
+      return;
+    }
+
+    // Determine if this stage requires bill setup
     const requiresBillSetup = ["BILL1_SETUP", "BILL2_SETUP_PREP"].includes(
       newStage,
     );
-    const requiresTeamSelection = ["BILL1_R2", "BILL2_R2"].includes(newStage);
 
     if (requiresBillSetup) {
       // Check if bill data already exists
@@ -142,15 +229,7 @@ export default function ModeratorDashboard() {
       }
     }
 
-    if (requiresTeamSelection) {
-      // Show team selection modal
-      const billNumber = newStage === "BILL1_R2" ? 1 : 2;
-      setTeamSelectionInProgress({ billNumber, stage: newStage });
-      setShowTeamSelectionModal(true);
-      return; // Don't change stage yet
-    }
-
-    // Otherwise, proceed normally
+    // For 1v1 stages, we now handle team selection inside the stage
     await updateStage(newStage);
   };
 
@@ -161,8 +240,10 @@ export default function ModeratorDashboard() {
       // Save bill data to store
       setBillData(data.billNumber, data.billName, data.billSummary);
 
-      // Persist to database
-      if (session?.id) {
+      // Ensure stage in DB is updated before bill submission
+      const targetStage = billSetupInProgress?.stage;
+      if (session?.id && targetStage) {
+        await updateStage(targetStage);
         await saveBillData(
           session.id,
           data.billNumber,
@@ -173,12 +254,6 @@ export default function ModeratorDashboard() {
 
       // Close modal
       setShowBillSetupModal(false);
-
-      // Now actually change stage
-      const stage = billSetupInProgress?.stage;
-      if (stage) {
-        await updateStage(stage);
-      }
 
       // Reset
       setBillSetupInProgress(null);
@@ -228,6 +303,15 @@ export default function ModeratorDashboard() {
 
   // Toggle raise hand access (frontend state + backend enforcement)
   const handleToggleRaiseHandAccess = async () => {
+    // Do not allow buzzer changes while 1v1 is active
+    if (
+      (stage === "BILL1_R2" || stage === "BILL2_R2") &&
+      oneVsOneState === "ACTIVE"
+    ) {
+      alert("Raise hand (buzzer) is locked while a 1v1 debate is active.");
+      return;
+    }
+
     setTogglingRaiseHand(true);
     try {
       const newValue = !raiseHandEnabled;
@@ -252,7 +336,7 @@ export default function ModeratorDashboard() {
 
   /* ── Desktop sidebar nav ─────────────────────────────────────────── */
   const Sidebar = () => (
-    <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white border-r border-gray-100 min-h-[calc(100vh-64px)] sticky top-[64px] overflow-y-auto z-10 transition-transform">
+    <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white border-r border-gray-100 min-h-[calc(100vh-64px)] sticky top-16 overflow-y-auto z-10 transition-transform">
       {/* Role badge */}
       <div className="p-5 border-b border-gray-100 group relative">
         <div className="absolute right-0 top-0 w-16 h-16 bg-saffron/5 rounded-bl-full -z-10 transition-transform group-hover:scale-110"></div>
@@ -323,7 +407,7 @@ export default function ModeratorDashboard() {
               Active Stage
             </p>
             <p className="text-sm font-bold text-india-green mt-1 truncate capitalize">
-              {session?.stage.replace("_", " ") || "No session"}
+              {(session?.stage ?? "").replace("_", " ") || "No session"}
             </p>
           </div>
         </div>
@@ -424,7 +508,7 @@ export default function ModeratorDashboard() {
                   </div>
                   <div className="z-50 relative">
                     <CustomSelect
-                      value={stage || session?.stage || "WAITING"}
+                      value={stage ?? session?.stage ?? null}
                       onChange={handleStageChange}
                       options={STAGE_OPTIONS}
                     />
@@ -448,9 +532,15 @@ export default function ModeratorDashboard() {
                     </p>
                   </div>
                   <button
-                    onClick={handleToggleRaiseHandAccess}
-                    disabled={togglingRaiseHand}
-                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all active:scale-95 whitespace-nowrap ${
+                    onClick={
+                      togglingRaiseHand || isStageBlocked || isOneVsOneActive
+                        ? undefined
+                        : handleToggleRaiseHandAccess
+                    }
+                    disabled={
+                      togglingRaiseHand || isStageBlocked || isOneVsOneActive
+                    }
+                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all whitespace-nowrap ${
                       raiseHandEnabled
                         ? "bg-india-green text-white hover:bg-opacity-90"
                         : "bg-gray-300 text-gray-600"
@@ -461,110 +551,61 @@ export default function ModeratorDashboard() {
                 </section>
               )}
 
-              {/* 1v1 Debate Control — only for Stage 3 & 6 */}
+              {/* 1v1 Selection Controls — Only when in BILL1_R2 / BILL2_R2 */}
               {role === "moderator" &&
                 (stage === "BILL1_R2" || stage === "BILL2_R2") && (
-                  <section className="bg-white rounded-xl p-4 shadow-soft border border-purple-100 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:shadow-md relative">
-                    <div>
-                      <h2 className="text-sm font-bold text-neutral-dark flex items-center gap-2">
-                        <span className="material-symbols-outlined text-purple-500 bg-purple-50 p-1.5 rounded-lg">
-                          sports_mma
-                        </span>
-                        1v1 Debate Round
-                      </h2>
-                      <p className="text-xs text-gray-500 font-medium mt-1">
-                        Select Challenger and Opponent via the 1v1 modal, then start
-                        a 3-minute face-off.
-                      </p>
-                      {(() => {
-                        const key =
-                          stage === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
-                        const selection =
-                          session?.team_selections?.[key] || {};
-                        const challenger = selection.teamA || null;
-                        const opponent = selection.teamB || null;
+                  <section className="bg-white rounded-xl p-4 shadow-soft border border-gray-100 space-y-3">
+                    <h2 className="text-sm font-bold text-neutral-dark">
+                      1v1 Debate Round
+                    </h2>
+                    {oneVsOneState === "SELECTION" && (
+                      <div>
+                        {!challengerTeam && !opponentTeam && (
+                          <p className="text-gray-500">
+                            Teams will be chosen after buzzer.
+                          </p>
+                        )}
+                        {challengerTeam && (
+                          <p className="text-gray-700 font-medium">
+                            Challenger Selected: {challengerTeam}
+                          </p>
+                        )}
+                        {opponentTeam && (
+                          <p className="text-gray-700 font-medium">
+                            Opponent Selected: {opponentTeam}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
-                        return (
-                          <div className="mt-3 text-xs text-gray-600 space-y-1">
-                            <p>
-                              <span className="font-semibold text-gray-500">
-                                Challenger:
-                              </span>{" "}
-                              <span className="font-bold text-neutral-dark">
-                                {challenger || "Not selected"}
-                              </span>
-                            </p>
-                            <p>
-                              <span className="font-semibold text-gray-500">
-                                Opponent:
-                              </span>{" "}
-                              <span className="font-bold text-neutral-dark">
-                                {opponent || "Not selected"}
-                              </span>
-                            </p>
+                    {oneVsOneState === "ACTIVE" && (
+                      <div className="grid grid-cols-3 gap-4 items-center">
+                        {/* Left Side: Challenger */}
+                        <div className="text-center">
+                          <h3 className="text-lg font-bold text-saffron">
+                            {challengerTeam}
+                          </h3>
+                          <div className="text-sm text-gray-500">
+                            Challenger
                           </div>
-                        );
-                      })()}
-                    </div>
+                        </div>
 
-                    {(() => {
-                      const key =
-                        stage === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
-                      const selection =
-                        session?.team_selections?.[key] || {};
-                      const challenger = selection.teamA || null;
-                      const opponent = selection.teamB || null;
-                      const canStart = !!challenger && !!opponent;
+                        {/* Center: Timer */}
+                        <div className="text-center">
+                          <div className="text-4xl font-bold text-neutral-dark">
+                            {Math.max(0, timer)}s
+                          </div>
+                        </div>
 
-                      const handleStartOneVsOne = async () => {
-                        if (!session?.id || !canStart) return;
-                        setIsStartingOneVsOne(true);
-                        try {
-                          const startTime = Date.now();
-                          try {
-                            await supabase.channel("one-vs-one").send({
-                              type: "broadcast",
-                              event: "one_vs_one_start",
-                              payload: {
-                                sessionId: session.id,
-                                stage,
-                                startTime,
-                              },
-                            });
-                          } catch (broadcastErr) {
-                            console.error(
-                              "Failed to broadcast 1v1 start event:",
-                              broadcastErr,
-                            );
-                          }
-                        } finally {
-                          setIsStartingOneVsOne(false);
-                        }
-                      };
-
-                      return (
-                        <button
-                          type="button"
-                          onClick={handleStartOneVsOne}
-                          disabled={!canStart || isStartingOneVsOne}
-                          className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:scale-[0.97] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-                        >
-                          {isStartingOneVsOne ? (
-                            <>
-                              <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              Starting…
-                            </>
-                          ) : (
-                            <>
-                              <span className="material-symbols-outlined text-sm">
-                                start
-                              </span>
-                              Start 1v1 Debate
-                            </>
-                          )}
-                        </button>
-                      );
-                    })()}
+                        {/* Right Side: Opponent */}
+                        <div className="text-center">
+                          <h3 className="text-lg font-bold text-india-green">
+                            {opponentTeam}
+                          </h3>
+                          <div className="text-sm text-gray-500">Opponent</div>
+                        </div>
+                      </div>
+                    )}
                   </section>
                 )}
 

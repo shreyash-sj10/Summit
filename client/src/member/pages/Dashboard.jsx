@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import useUserStore from "../../store/useUserStore";
 import useSessionStore from "../../store/useSessionStore";
 import useQueueStore from "../../store/useQueueStore";
 import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
+import BillAnnouncement from "../components/BillAnnouncement";
+import OneVsOneLayout from "../components/OneVsOneLayout";
+import NormalDebateLayout from "../components/NormalDebateLayout";
 import { getPartyDetails, getRaiseHandStatus } from "../../shared/services/api";
 import { supabase } from "../../shared/services/supabase";
 import TopBar from "../../shared/components/TopBar";
@@ -31,6 +34,10 @@ export default function MemberDashboard() {
     leaderboard,
     fetchActiveSession,
     initRealtimeSession,
+    billData,
+    teamSelections,
+    timer,
+    timerLimit,
   } = useSessionStore();
   const { queue, initQueueRealtime } = useQueueStore();
   const { isWindowActive, timeRemaining, setWindowState, setTimeRemaining } =
@@ -38,6 +45,12 @@ export default function MemberDashboard() {
 
   const [partyDetails, setPartyDetails] = useState(undefined); // undefined = loading, null = not found
   const [tab, setTab] = useState("home");
+  const [oneVsOneState, setOneVsOneState] = useState(null); // "SELECTION" | "ACTIVE" | null
+  const [oneVsOneStartTime, setOneVsOneStartTime] = useState(null);
+  const [oneVsOneRemaining, setOneVsOneRemaining] = useState(180);
+  const [oneVsOneChallenger, setOneVsOneChallenger] = useState(null);
+  const [oneVsOneOpponent, setOneVsOneOpponent] = useState(null);
+  const oneVsOneTimerRef = useRef(null);
 
   const myQueueEntry = queue.find((q) => q.member?.id === user?.id);
 
@@ -136,6 +149,175 @@ export default function MemberDashboard() {
 
   const speechesLeft = Math.max(0, 2 - (user?.speeches_count || 0));
 
+  // Manage local 1v1 state only for BILL1_R2 / BILL2_R2
+  // On stage entry, default to SELECTION unless a valid start timestamp exists (refresh case)
+  useEffect(() => {
+    const currentStage = session?.stage;
+    const isOneVsOneStage =
+      currentStage === "BILL1_R2" || currentStage === "BILL2_R2";
+
+    if (!isOneVsOneStage) {
+      setOneVsOneState(null);
+      setOneVsOneStartTime(null);
+      setOneVsOneRemaining(180);
+      setOneVsOneChallenger(null);
+      setOneVsOneOpponent(null);
+      if (oneVsOneTimerRef.current) {
+        clearInterval(oneVsOneTimerRef.current);
+        oneVsOneTimerRef.current = null;
+      }
+      return;
+    }
+
+    const storageKey = `abhimat_one_vs_one_start_${currentStage}`;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const ts = Number(raw);
+        if (!Number.isNaN(ts)) {
+          const elapsed = Math.floor((Date.now() - ts) / 1000);
+          const remaining = Math.max(0, 180 - elapsed);
+          if (remaining > 0) {
+            setOneVsOneState("ACTIVE");
+            setOneVsOneStartTime(ts);
+            setOneVsOneRemaining(remaining);
+            return;
+          }
+          // Expired – clear stored timestamp
+          window.localStorage.removeItem(storageKey);
+        }
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+
+    // Fallback: selection mode, no active timer
+    setOneVsOneState("SELECTION");
+    setOneVsOneStartTime(null);
+    setOneVsOneRemaining(180);
+    setOneVsOneChallenger(null);
+    setOneVsOneOpponent(null);
+  }, [session?.stage]);
+
+  // Mirror moderator team selection into local challenger/opponent during SELECTION (no active round)
+  useEffect(() => {
+    const currentStage = session?.stage;
+    const isOneVsOneStage =
+      currentStage === "BILL1_R2" || currentStage === "BILL2_R2";
+
+    if (!isOneVsOneStage) return;
+    if (oneVsOneState !== "SELECTION" || oneVsOneStartTime) return;
+
+    const key = currentStage === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
+    const selection =
+      session?.team_selections?.[key] ||
+      teamSelections?.[key] ||
+      null;
+
+    setOneVsOneChallenger(selection?.teamA || null);
+    setOneVsOneOpponent(selection?.teamB || null);
+  }, [
+    session?.stage,
+    session?.team_selections,
+    teamSelections,
+    oneVsOneState,
+    oneVsOneStartTime,
+  ]);
+
+  // Listen for 1v1 start broadcasts to activate timer with a shared start timestamp
+  useEffect(() => {
+    const channel = supabase
+      .channel("one-vs-one")
+      .on("broadcast", { event: "one_vs_one_start" }, (payload) => {
+        const { stage: startedStage, startTime } = payload.payload || {};
+        const currentStage = session?.stage;
+        if (!startedStage || !startTime) return;
+        if (currentStage !== startedStage) return;
+
+        const ts = Number(startTime);
+        if (Number.isNaN(ts)) return;
+
+        const elapsed = Math.floor((Date.now() - ts) / 1000);
+        const remaining = Math.max(0, 180 - elapsed);
+        if (remaining <= 0) return;
+
+        setOneVsOneState("ACTIVE");
+        setOneVsOneStartTime(ts);
+        setOneVsOneRemaining(remaining);
+
+        try {
+          const storageKey = `abhimat_one_vs_one_start_${startedStage}`;
+          window.localStorage.setItem(storageKey, String(ts));
+        } catch {
+          // Ignore localStorage errors
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session?.stage]);
+
+  // 180-second 1v1 timer — derived from a shared start timestamp
+  useEffect(() => {
+    const currentStage = session?.stage;
+    const isOneVsOneStage =
+      currentStage === "BILL1_R2" || currentStage === "BILL2_R2";
+
+    if (
+      !isOneVsOneStage ||
+      oneVsOneState !== "ACTIVE" ||
+      !oneVsOneStartTime
+    ) {
+      if (oneVsOneTimerRef.current) {
+        clearInterval(oneVsOneTimerRef.current);
+        oneVsOneTimerRef.current = null;
+      }
+      return;
+    }
+
+    const updateRemaining = () => {
+      const elapsed = Math.floor((Date.now() - oneVsOneStartTime) / 1000);
+      const remaining = Math.max(0, 180 - elapsed);
+      setOneVsOneRemaining(remaining);
+      if (remaining <= 0 && oneVsOneTimerRef.current) {
+        clearInterval(oneVsOneTimerRef.current);
+        oneVsOneTimerRef.current = null;
+
+        // Round ended: return to SELECTION, clear local 1v1 state, but keep stage
+        setOneVsOneState("SELECTION");
+        setOneVsOneStartTime(null);
+        setOneVsOneRemaining(180);
+        setOneVsOneChallenger(null);
+        setOneVsOneOpponent(null);
+
+        try {
+          const storageKey = `abhimat_one_vs_one_start_${session?.stage}`;
+          if (storageKey) window.localStorage.removeItem(storageKey);
+        } catch {
+          // Ignore localStorage errors
+        }
+      }
+    };
+
+    // Initial sync
+    updateRemaining();
+
+    if (oneVsOneTimerRef.current) {
+      clearInterval(oneVsOneTimerRef.current);
+    }
+
+    oneVsOneTimerRef.current = setInterval(updateRemaining, 1000);
+
+    return () => {
+      if (oneVsOneTimerRef.current) {
+        clearInterval(oneVsOneTimerRef.current);
+        oneVsOneTimerRef.current = null;
+      }
+    };
+  }, [session?.stage, oneVsOneState, oneVsOneStartTime]);
+
   /* ── Desktop sidebar nav ─────────────────────────────────────────── */
   const Sidebar = () => (
     <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white border-r border-gray-100 min-h-[calc(100vh-64px)] sticky top-[64px] overflow-y-auto transition-transform">
@@ -228,8 +410,10 @@ export default function MemberDashboard() {
     </aside>
   );
 
+  const stage = session?.stage;
+
   // If stage is WAITING, take over the entire screen for the user
-  if (session?.stage === "WAITING") {
+  if (stage === "WAITING") {
     return <WaitingRoom />;
   }
 
@@ -346,142 +530,116 @@ export default function MemberDashboard() {
             )}
           </section>
 
-          {/* Tab content */}
-          {tab === "home" && (
-            <>
-              {/* Action row — 2 column on desktop */}
-              <section className="grid grid-cols-12 gap-4">
-                <RaiseHandButton
-                  queueEntry={myQueueEntry}
-                  session={session}
-                  onUpdate={fetchActiveSession}
-                />
-                <button
-                  onClick={() => setTab("polls")}
-                  className="col-span-4 group relative overflow-hidden rounded-xl bg-accent text-neutral-dark p-5 flex flex-col justify-between h-32 transition-all shadow-lg shadow-accent/20 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98]"
-                >
-                  <div className="absolute right-0 bottom-0 opacity-20 translate-x-2 translate-y-2 transition-transform group-hover:scale-110">
-                    <span className="material-symbols-outlined text-[100px]">
-                      monitoring
-                    </span>
-                  </div>
-                  <span className="material-symbols-outlined text-3xl">
-                    monitoring
-                  </span>
-                  <span className="text-sm font-black tracking-tight text-left leading-tight uppercase relative z-10">
-                    Polls
-                  </span>
-                </button>
-              </section>
+          {/* Stage-driven main content */}
+          {(() => {
+            const isBill1Stage = stage?.startsWith("BILL1_");
+            const isBill2Stage = stage?.startsWith("BILL2_");
+            const bill =
+              isBill1Stage
+                ? session?.bill_1_data ||
+                  billData?.bill1 ||
+                  session?.bill_data?.bill1
+                : isBill2Stage
+                  ? session?.bill_2_data ||
+                    billData?.bill2 ||
+                    session?.bill_data?.bill2
+                  : null;
 
-              {/* Power Cards display */}
-              {powerCards.length > 0 && (
-                <PowerCards
-                  cards={powerCards}
-                  session={session}
-                  onUpdate={fetchActiveSession}
-                />
-              )}
+            switch (stage) {
+              case "BILL1_SETUP":
+              case "BILL2_SETUP_PREP":
+                return <BillAnnouncement bill={bill} />;
 
-              {/* My queue position banner */}
-              {myQueueEntry && (
-                <div className="bg-accent/10 border border-accent/30 rounded-xl p-4 flex items-center gap-3 shadow-sm transform transition-all hover:scale-[1.01] hover:shadow-md animate-in fade-in slide-in-from-top-2">
-                  <div className="h-9 w-9 rounded-full bg-accent text-neutral-dark flex items-center justify-center text-[10px] font-black ring-2 ring-white shadow-sm">
-                    YOU
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-black text-neutral-dark">
-                      You're #
-                      {queue
-                        .filter((q) => q.status === "waiting")
-                        .findIndex((q) => q.member?.id === user?.id) + 1}{" "}
-                      in queue
-                    </p>
-                    <p className="text-[10px] text-india-green font-black uppercase tracking-wide">
-                      Prepare your notes!
-                    </p>
-                  </div>
-                </div>
-              )}
+              case "BILL1_R2":
+              case "BILL2_R2": {
+                const selection = {
+                  teamA: oneVsOneChallenger,
+                  teamB: oneVsOneOpponent,
+                };
+                const hasChallenger = !!oneVsOneChallenger;
+                const hasOpponent = !!oneVsOneOpponent;
 
-              {/* Party Ranking */}
-              {(() => {
-                const currentLeaderboard = leaderboard || [];
-                const sortedLeaderboard = [...currentLeaderboard].sort(
-                  (a, b) => b.points - a.points,
-                );
-                const myPartyRank =
-                  sortedLeaderboard.findIndex((p) => p.party === user?.party) +
-                  1;
-                const myPartyData = sortedLeaderboard.find(
-                  (p) => p.party === user?.party,
-                );
+                // ACTIVE mode — render split layout with real 180s timer
+                if (oneVsOneState === "ACTIVE" && hasChallenger && hasOpponent) {
+                  const total = 180;
+                  const elapsed = Math.max(0, total - oneVsOneRemaining);
+                  return (
+                    <OneVsOneLayout
+                      bill={bill}
+                      selection={selection}
+                      timer={elapsed}
+                      timerLimit={total}
+                    />
+                  );
+                }
 
+                // SELECTION mode – no split layout or timer
                 return (
-                  <section className="bg-white rounded-xl shadow-soft border border-gray-100 overflow-hidden transition-shadow hover:shadow-md mt-2">
-                    <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                      <h3 className="font-bold text-neutral-dark flex items-center gap-2 text-sm">
-                        <span className="material-symbols-outlined text-india-green">
-                          military_tech
+                  <section className="bg-white rounded-xl p-6 shadow-soft border border-dashed border-amber-300 text-center">
+                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-[0.3em] mb-2">
+                      1v1 Debate Round
+                    </p>
+                    {!hasChallenger && !hasOpponent && (
+                      <p className="text-sm text-gray-600">
+                        Teams will be chosen after buzzer.
+                      </p>
+                    )}
+                    {hasChallenger && (
+                      <p className="text-sm text-gray-600">
+                        <span className="font-semibold">Challenger Selected:</span>{" "}
+                        <span className="font-bold text-neutral-dark">
+                          {selection.teamA}
                         </span>
-                        Your Party Ranking
-                      </h3>
-                    </div>
-                    <div className="p-6 flex items-center justify-around text-center">
-                      <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                          Current Rank
-                        </p>
-                        <p className="text-3xl font-black text-neutral-dark mt-1">
-                          {myPartyRank > 0 ? `#${myPartyRank}` : "—"}
-                        </p>
-                      </div>
-                      <div className="h-10 w-px bg-gray-100"></div>
-                      <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                          Total Points
-                        </p>
-                        <p className="text-3xl font-black text-india-green mt-1">
-                          {myPartyData ? myPartyData.points : "—"}
-                        </p>
-                      </div>
-                    </div>
+                      </p>
+                    )}
+                    {hasOpponent && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        <span className="font-semibold">Opponent Selected:</span>{" "}
+                        <span className="font-bold text-neutral-dark">
+                          {selection.teamB}
+                        </span>
+                      </p>
+                    )}
                   </section>
                 );
-              })()}
-            </>
-          )}
+              }
 
-          {tab === "polls" && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="flex flex-col gap-4">
-                {poll ? (
-                  <PollCard poll={poll} onVoted={fetchActiveSession} />
-                ) : (
-                  <div className="bg-white rounded-xl p-8 text-center border border-dashed border-gray-200 shadow-soft hover:bg-gray-50/50 transition-colors h-full flex flex-col items-center justify-center min-h-[300px]">
-                    <span className="material-symbols-outlined text-5xl text-gray-200 block mb-3">
-                      bar_chart
-                    </span>
-                    <p className="text-gray-400 font-medium">
-                      No active poll right now.
+              case "WINNER":
+                return (
+                  <section className="bg-white rounded-xl p-6 shadow-soft border border-gray-100 text-center">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.3em]">
+                      Session Locked
                     </p>
-                    <p className="text-[11px] text-gray-300 mt-1">
-                      The moderator will create one soon.
+                    <h2 className="text-xl font-black text-neutral-dark mt-2">
+                      Winner has been declared.
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Interactions are now closed. Please follow the final
+                      proceedings on the projection screen.
                     </p>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-4">
-                <Leaderboard leaderboard={leaderboard || []} />
-              </div>
-            </div>
-          )}
+                  </section>
+                );
 
-          {tab === "chat" && (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <ChatPanel sessionId={session?.id} />
-            </div>
-          )}
+              case "BILL1_R1":
+              case "BILL2_R1":
+              default:
+                return (
+                  <NormalDebateLayout
+                    stage={stage}
+                    bill={bill}
+                    user={user}
+                    session={session}
+                    queue={queue}
+                    myQueueEntry={myQueueEntry}
+                    leaderboard={leaderboard}
+                    powerCards={powerCards}
+                    tab={tab}
+                    setTab={setTab}
+                    fetchActiveSession={fetchActiveSession}
+                  />
+                );
+            }
+          })()}
         </main>
       </div>
 

@@ -46,12 +46,19 @@ export const saveBillData = (
     bill_name,
     bill_summary,
   });
-export const saveTeamSelection = (session_id, bill_number, team_a, team_b) =>
+export const saveTeamSelection = (
+  session_id,
+  bill_number,
+  team_a,
+  team_b,
+  start_time = null,
+) =>
   api.post("/session/team-selection", {
     session_id,
     bill_number,
     team_a,
     team_b,
+    start_time,
   });
 export const getRaiseHandStatus = () => api.get("/session/raise-hand/status");
 export const toggleRaiseHandAccess = (raise_hand_enabled) =>

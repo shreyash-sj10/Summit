@@ -96,11 +96,21 @@ const useSessionStore = create((set, get) => ({
       const activeSpk = sess?.current_speaker;
       set({
         session: sess,
-        stage: sess?.stage || "WAITING",
+        stage: sess?.stage ?? null,
         activeSpeaker: activeSpk,
         poll: pollRes.data.poll,
         leaderboard: leadRes.data.leaderboard || [],
       });
+
+      // Sync 1v1 team selections from session payload when available
+      if (sess?.team_selections) {
+        set((state) => ({
+          teamSelections: {
+            ...state.teamSelections,
+            ...sess.team_selections,
+          },
+        }));
+      }
 
       // Reconstruct timer if someone is speaking
       if (!activeSpk) {

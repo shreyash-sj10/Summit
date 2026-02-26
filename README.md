@@ -151,22 +151,36 @@ When a member plays a card, it is immediately deducted from their inventory, bro
 All routes (except `/auth/login`) are protected by JWT via `authMiddleware`. Specific routes use `moderatorOnly` or `officialOnly` middlewares to restrict access.
 
 ### Auth (`/auth`)
-- `POST /login`: Authenticates member ID + Party/Code, returns JWT & user profile.
-
-### Queue (`/queue`)
-- `GET /`: Fetches the active speaker queue.
-- `POST /raise`: Member requests to speak.
-- `POST /approve`: Mod approves a waiting member.
-- `POST /done`: Mod successfully concludes a speaker's turn.
-- `POST /revoke`: Mod forcibly ends a speaker's turn.
+- `POST /auth/login`: Authenticates member ID + Party/Code, returns JWT & user profile.
+- `GET /auth/me`: Refreshes the logged-in user's profile.
 
 ### Session (`/session`)
-- `GET /active`: Fetches current session details, stage, and active speaker.
-- `POST /stage`: Mod updates the session stage (e.g., to `third_round`).
+- `GET /session/active`: Fetches current session details, stage, and active speaker.
+- `POST /session/stage`: Moderator updates the session stage (e.g., `BILL1_R1`, `BILL1_R2`, `BILL2_R1`).
+- `GET /session/raise-hand/status`: Gets the current raise-hand window status.
+- `PATCH /session/raise-hand`: Moderator enables/disables raise-hand and opens/closes the window.
+- `POST /session/bill-data`: Moderator stores bill name/summary for Bill 1 or Bill 2.
+- `POST /session/team-selection`: Moderator stores 1v1 team selections for Bill 1 or Bill 2.
+
+### Queue (`/queue`)
+- `GET /queue`: Fetches the active speaker queue.
+
+### Speaker Control (`/speaker`)
+- `PATCH /speaker/approve/:queueId`: Moderator approves a queued member to speak.
+- `PATCH /speaker/done`: Moderator concludes the current speaker's turn.
+- `PATCH /speaker/revoke`: Moderator revokes the mic from the current speaker.
 
 ### Hand & Cards (`/hand`)
-- `GET /cards`: Fetches unused power cards for the logged-in member.
-- `POST /use-power-card`: Uses a power card, verifying stage constraints, and broadcasts the event via Realtime.
+- `POST /hand/raise`: Member requests to speak (adds to queue).
+- `DELETE /hand/lower`: Member lowers hand (marks waiting entry as skipped).
+- `GET /hand/cards`: Fetches unused power cards for the logged-in member.
+- `POST /hand/use-power-card`: Uses a power card and broadcasts the event via Realtime.
+
+### Chat (`/chat`)
+- `GET /chat`: Fetches paginated chat for the active session.
+- `POST /chat`: Posts a message.
+- `DELETE /chat`: Clears chat (moderator only).
+- `PATCH /chat/:messageId/golden`: Marks/unmarks a message as golden.
 
 ### Moderator (`/moderator`)
 - `GET /grade/status`: Checks if the logged-in official has already graded the active speaker.
@@ -179,6 +193,5 @@ All routes (except `/auth/login`) are protected by JWT via `authMiddleware`. Spe
 - `GET /points`: Fetches the team points leaderboard.
 
 ### Party (`/party`)
-- `GET /`: Retrieves party logo and custom details.
-- `POST /`: Sets or updates custom party details.
-- `GET /members`: Retrieves a list of all members belonging to the requester's party.
+- `GET /party/:party`: Retrieves party logo and custom details.
+- `POST /party`: Sets or updates custom party details.

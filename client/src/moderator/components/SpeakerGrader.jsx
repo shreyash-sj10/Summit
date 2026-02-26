@@ -34,6 +34,17 @@ export default function SpeakerGrader({
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  const isBill1R2 = currentStage === "BILL1_R2";
+  const isBill2R2 = currentStage === "BILL2_R2";
+  const oneVsOneKey = isBill1R2 ? "bill1Round2" : isBill2R2 ? "bill2Round2" : null;
+  const oneVsOneSelection =
+    oneVsOneKey && session?.team_selections
+      ? session.team_selections[oneVsOneKey] || null
+      : null;
+  const oneVsOneSelectionIncomplete =
+    (isBill1R2 || isBill2R2) &&
+    (!oneVsOneSelection?.teamA || !oneVsOneSelection?.teamB);
+
   useEffect(() => {
     async function fetchStatus() {
       if (!speaker) return;
@@ -123,6 +134,32 @@ export default function SpeakerGrader({
   };
 
   if (!speaker) {
+    // In 1v1 selection mode, show matchup info and keep grading locked
+    if (oneVsOneSelectionIncomplete && (isBill1R2 || isBill2R2)) {
+      return (
+        <div className="bg-white rounded-xl p-6 text-center border border-gray-100 shadow-soft">
+          <span className="material-symbols-outlined text-4xl text-purple-300">
+            sports_mma
+          </span>
+          <p className="text-gray-700 mt-2 font-semibold">
+            1v1 Selection Mode – waiting for moderator to start the debate.
+          </p>
+          {oneVsOneSelection && (oneVsOneSelection.teamA || oneVsOneSelection.teamB) && (
+            <p className="text-xs text-gray-500 mt-2">
+              Selected so far:&nbsp;
+              <span className="font-bold text-neutral-dark">
+                {oneVsOneSelection.teamA || "—"}
+              </span>
+              {" vs "}
+              <span className="font-bold text-neutral-dark">
+                {oneVsOneSelection.teamB || "—"}
+              </span>
+            </p>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="bg-white rounded-xl p-6 text-center border border-gray-100 shadow-soft">
         <span className="material-symbols-outlined text-4xl text-gray-300">

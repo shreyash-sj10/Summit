@@ -1,12 +1,12 @@
-import { useState } from "react";
-import { raiseHand, lowerHand } from "../../shared/services/api";
-import useRaiseHandStore from "../../store/useRaiseHandStore";
+import { useState, useEffect } from "react";
+import { raiseHand } from "../../shared/services/api";
 import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
 
 export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
   const [loading, setLoading] = useState(false);
-  const { raiseHandEnabled } = useRaiseHandStore();
-  const { isWindowActive, timeRemaining } = useRaiseHandWindowStore();
+  const { isEnabled, isWindowActive, timeRemaining } =
+    useRaiseHandWindowStore();
+  const [hasRaisedInWindow, setHasRaisedInWindow] = useState(false);
 
   const isWaiting = queueEntry?.status === "waiting";
   const isSpeaking = queueEntry?.status === "speaking";
@@ -16,8 +16,19 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
   );
   const noChancesLeft = speechesLeft === 0;
 
+  // Only allow raise hand in debate stages (Round 1 & 1v1)
+  const allowedStages = new Set(["BILL1_R1", "BILL1_R2", "BILL2_R1", "BILL2_R2"]);
+  const isDebateStage = allowedStages.has(session?.stage);
+
+  // Reset local "hand raised" state whenever a new server window starts
+  useEffect(() => {
+    if (isWindowActive) {
+      setHasRaisedInWindow(false);
+    }
+  }, [isWindowActive]);
+
   async function handleRaise(e) {
-    if (noChancesLeft || !isWindowActive) {
+    if (noChancesLeft || !isWindowActive || hasRaisedInWindow) {
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -25,23 +36,12 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
     setLoading(true);
     try {
       await raiseHand();
+      setHasRaisedInWindow(true);
       onUpdate();
     } catch (e) {
       if (e.response?.status !== 409) {
         console.error("Failed to raise hand:", e);
       }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleLower() {
-    setLoading(true);
-    try {
-      await lowerHand();
-      onUpdate();
-    } catch (e) {
-      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -74,9 +74,8 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
   if (isWaiting) {
     return (
       <button
-        onClick={handleLower}
-        disabled={loading}
-        className="col-span-8 group relative overflow-hidden rounded-xl bg-amber-500 text-white p-5 flex flex-col justify-between h-32 transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98]"
+        disabled
+        className="col-span-8 group relative overflow-hidden rounded-xl bg-amber-500 text-white p-5 flex flex-col justify-between h-32 shadow-lg shadow-amber-500/20 cursor-not-allowed"
       >
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-4 translate-y-4">
           <span className="material-symbols-outlined text-[120px]">
@@ -88,40 +87,48 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
             front_hand
           </span>
           <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest">
-            In Queue
+            Hand Raised
           </span>
         </div>
         <span className="text-xl font-black tracking-tighter text-left mt-2">
-          {loading ? "LOWERING..." : "LOWER HAND"}
+          HAND RAISED
         </span>
       </button>
     );
   }
 
-  if (!raiseHandEnabled || !isWindowActive) {
+  // During non-debate stages or when server has disabled raising hands / window inactive,
+  // hide the red "NOT ALLOWED" block and simply disable the control.
+  if (!isDebateStage || !isEnabled || !isWindowActive) {
     return (
-      <div className="col-span-8 relative overflow-hidden rounded-xl p-5 flex flex-col justify-between h-32 bg-red-100 border border-red-300 opacity-60 cursor-not-allowed">
+      <button
+        disabled
+        className="col-span-8 group relative overflow-hidden rounded-xl p-5 flex flex-col justify-between h-32 bg-gray-100 border border-gray-200 opacity-70 cursor-not-allowed"
+      >
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-4 translate-y-4">
           <span className="material-symbols-outlined text-[120px]">
             front_hand
           </span>
         </div>
         <div className="flex items-center justify-between w-full">
-          <span className="material-symbols-outlined text-3xl bg-white/20 p-2 rounded-lg backdrop-blur-sm text-red-600">
+          <span className="material-symbols-outlined text-3xl bg-white/40 p-2 rounded-lg backdrop-blur-sm text-gray-400">
             front_hand
           </span>
+          <span className="bg-white/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest text-gray-500">
+            Raise hand unavailable
+          </span>
         </div>
-        <span className="text-xl font-black tracking-tighter text-left mt-2 text-red-600">
-          NOT ALLOWED
+        <span className="text-xs font-medium text-gray-500 mt-2">
+          You can raise your hand only during active debate stages.
         </span>
-      </div>
+      </button>
     );
   }
 
   return (
     <button
       onClick={handleRaise}
-      disabled={loading || noChancesLeft}
+      disabled={loading || noChancesLeft || hasRaisedInWindow}
       className={`col-span-8 group relative overflow-hidden rounded-xl p-5 flex flex-col justify-between h-32 transition-all ${
         noChancesLeft ? "cursor-not-allowed opacity-60" : "active:scale-[0.98]"
       } ${
@@ -148,9 +155,11 @@ export default function RaiseHandButton({ queueEntry, session, onUpdate }) {
       <span className="text-xl font-black tracking-tighter text-left mt-2">
         {noChancesLeft
           ? "NO CHANCES LEFT"
-          : loading
-            ? "RAISING..."
-            : "RAISE HAND"}
+          : hasRaisedInWindow
+            ? "HAND RAISED"
+            : loading
+              ? "RAISING..."
+              : "RAISE HAND"}
       </span>
     </button>
   );

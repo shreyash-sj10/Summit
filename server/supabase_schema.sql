@@ -41,9 +41,17 @@ create table sessions (
   id                  uuid primary key default gen_random_uuid(),
   title               text not null,
   is_active           boolean not null default false,
-  stage               text not null default 'waiting_room'
-                      check (stage in ('waiting_room', 'first_bill', 'one_on_one', 'third_round')),
+  stage               text not null default 'WAITING'
+                      check (stage in ('WAITING', 'BILL1_SETUP', 'BILL1_R1', 'BILL1_R2', 'BILL2_SETUP_PREP', 'BILL2_R1', 'BILL2_R2', 'WINNER')),
   current_speaker_id  uuid references members(id) on delete set null,
+  
+  -- Bill data storage (JSONB)
+  bill_1_data         jsonb default '{"name": null, "summary": null}'::jsonb,
+  bill_2_data         jsonb default '{"name": null, "summary": null}'::jsonb,
+  
+  -- Team selections for 1v1 rounds (JSONB)
+  team_selections     jsonb default '{"bill1Round2": {"teamA": null, "teamB": null}, "bill2Round2": {"teamA": null, "teamB": null}}'::jsonb,
+  
   created_at          timestamptz default now()
 );
 create unique index sessions_one_active on sessions (is_active) where is_active = true;
