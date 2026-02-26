@@ -210,9 +210,7 @@ export default function MemberDashboard() {
 
     const key = currentStage === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
     const selection =
-      session?.team_selections?.[key] ||
-      teamSelections?.[key] ||
-      null;
+      session?.team_selections?.[key] || teamSelections?.[key] || null;
 
     setOneVsOneChallenger(selection?.teamA || null);
     setOneVsOneOpponent(selection?.teamB || null);
@@ -265,11 +263,7 @@ export default function MemberDashboard() {
     const isOneVsOneStage =
       currentStage === "BILL1_R2" || currentStage === "BILL2_R2";
 
-    if (
-      !isOneVsOneStage ||
-      oneVsOneState !== "ACTIVE" ||
-      !oneVsOneStartTime
-    ) {
+    if (!isOneVsOneStage || oneVsOneState !== "ACTIVE" || !oneVsOneStartTime) {
       if (oneVsOneTimerRef.current) {
         clearInterval(oneVsOneTimerRef.current);
         oneVsOneTimerRef.current = null;
@@ -534,16 +528,15 @@ export default function MemberDashboard() {
           {(() => {
             const isBill1Stage = stage?.startsWith("BILL1_");
             const isBill2Stage = stage?.startsWith("BILL2_");
-            const bill =
-              isBill1Stage
-                ? session?.bill_1_data ||
-                  billData?.bill1 ||
-                  session?.bill_data?.bill1
-                : isBill2Stage
-                  ? session?.bill_2_data ||
-                    billData?.bill2 ||
-                    session?.bill_data?.bill2
-                  : null;
+            const bill = isBill1Stage
+              ? session?.bill_1_data ||
+                billData?.bill1 ||
+                session?.bill_data?.bill1
+              : isBill2Stage
+                ? session?.bill_2_data ||
+                  billData?.bill2 ||
+                  session?.bill_data?.bill2
+                : null;
 
             switch (stage) {
               case "BILL1_SETUP":
@@ -560,7 +553,11 @@ export default function MemberDashboard() {
                 const hasOpponent = !!oneVsOneOpponent;
 
                 // ACTIVE mode — render split layout with real 180s timer
-                if (oneVsOneState === "ACTIVE" && hasChallenger && hasOpponent) {
+                if (
+                  oneVsOneState === "ACTIVE" &&
+                  hasChallenger &&
+                  hasOpponent
+                ) {
                   const total = 180;
                   const elapsed = Math.max(0, total - oneVsOneRemaining);
                   return (
@@ -575,31 +572,57 @@ export default function MemberDashboard() {
 
                 // SELECTION mode – no split layout or timer
                 return (
-                  <section className="bg-white rounded-xl p-6 shadow-soft border border-dashed border-amber-300 text-center">
-                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-[0.3em] mb-2">
-                      1v1 Debate Round
-                    </p>
-                    {!hasChallenger && !hasOpponent && (
-                      <p className="text-sm text-gray-600">
-                        Teams will be chosen after buzzer.
-                      </p>
-                    )}
-                    {hasChallenger && (
-                      <p className="text-sm text-gray-600">
-                        <span className="font-semibold">Challenger Selected:</span>{" "}
-                        <span className="font-bold text-neutral-dark">
-                          {selection.teamA}
-                        </span>
-                      </p>
-                    )}
-                    {hasOpponent && (
-                      <p className="text-sm text-gray-600 mt-1">
-                        <span className="font-semibold">Opponent Selected:</span>{" "}
-                        <span className="font-bold text-neutral-dark">
-                          {selection.teamB}
-                        </span>
-                      </p>
-                    )}
+                  <section className="bg-white rounded-xl p-6 shadow-soft border border-dashed border-amber-300">
+                    <div className="flex flex-col lg:flex-row items-center gap-6">
+                      <div className="flex-1 text-center lg:text-left">
+                        <p className="text-[10px] font-bold text-amber-500 uppercase tracking-[0.3em] mb-3">
+                          1v1 Debate Round
+                        </p>
+                        {!hasChallenger && !hasOpponent ? (
+                          <p className="text-sm text-gray-600 mb-4">
+                            Teams will be chosen after buzzer.
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-600 mb-4">
+                            Teams below reflect moderator selection.
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-center lg:justify-start gap-4">
+                          <div className="min-w-[140px] p-3 bg-gray-50 rounded-lg border border-gray-100">
+                            <p className="text-[10px] text-gray-400 uppercase">
+                              Challenger
+                            </p>
+                            <p className="text-sm font-bold text-neutral-dark mt-1">
+                              {selection.teamA || "—"}
+                            </p>
+                          </div>
+
+                          <div className="text-sm font-semibold text-gray-500">
+                            vs
+                          </div>
+
+                          <div className="min-w-[140px] p-3 bg-gray-50 rounded-lg border border-gray-100">
+                            <p className="text-[10px] text-gray-400 uppercase">
+                              Opponent
+                            </p>
+                            <p className="text-sm font-bold text-neutral-dark mt-1">
+                              {selection.teamB || "—"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="w-full lg:w-56">
+                        <div className="flex justify-center lg:justify-end">
+                          <RaiseHandButton
+                            queueEntry={myQueueEntry}
+                            session={session}
+                            onUpdate={fetchActiveSession}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </section>
                 );
               }

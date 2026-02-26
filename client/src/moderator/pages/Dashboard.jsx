@@ -94,6 +94,7 @@ export default function ModeratorDashboard() {
     setTeamSelection,
     billData,
     stage,
+    teamSelections,
   } = useSessionStore();
   const { queue, initQueueRealtime } = useQueueStore();
   const { raiseHandEnabled, setRaiseHandAccess } = useRaiseHandStore();
@@ -122,9 +123,12 @@ export default function ModeratorDashboard() {
     "WINNER",
   ]).has(stage);
 
-  // Define timer with a default value to prevent the ReferenceError
-  const timer = 0; // Replace with actual logic if needed
-  // Define isOneVsOneActive to prevent the ReferenceError
+  // 1v1 timer / start timestamp state
+  const ONE_VS_ONE_DURATION = 180; // seconds
+  const [startTimestamp, setStartTimestamp] = useState(null); // ms epoch
+  const [remainingTime, setRemainingTime] = useState(0);
+
+  // Define isOneVsOneActive derived flag
   const isOneVsOneActive =
     (stage === "BILL1_R2" || stage === "BILL2_R2") &&
     oneVsOneState === "ACTIVE";
@@ -156,19 +160,48 @@ export default function ModeratorDashboard() {
   useEffect(() => {
     const isOneVsOneStage = stage === "BILL1_R2" || stage === "BILL2_R2";
 
+    // Clear everything when leaving 1v1 stages
     if (!isOneVsOneStage) {
       setOneVsOneState(null);
       setChallengerTeam("");
       setOpponentTeam("");
       _setIsStartingOneVsOne(false);
+      setStartTimestamp(null);
+      setRemainingTime(0);
+      // remove persisted start key for previous stage/session
+      try {
+        const key = `oneVsOneStart:${session?.id}:${stage}`;
+        localStorage.removeItem(key);
+        const pKey = `abhimat_one_vs_one_start_${stage}`;
+        localStorage.removeItem(pKey);
+      } catch (err) {
+        console.error(err);
+      }
       return;
     }
 
-    // Enter SELECTION mode on stage entry
+    // Enter SELECTION mode on stage entry by default
     setOneVsOneState("SELECTION");
-    setChallengerTeam("");
-    setOpponentTeam("");
-  }, [stage]);
+
+    // Populate local challenger/opponent from store selections if available
+    try {
+      const sel =
+        stage === "BILL1_R2"
+          ? teamSelections?.bill1Round2
+          : teamSelections?.bill2Round2;
+      setChallengerTeam(sel?.teamA || "");
+      setOpponentTeam(sel?.teamB || "");
+    } catch (err) {
+      console.error(err);
+      setChallengerTeam("");
+      setOpponentTeam("");
+    }
+  }, [
+    stage,
+    session?.id,
+    teamSelections?.bill1Round2,
+    teamSelections?.bill2Round2,
+  ]);
 
   // Auto-disable raise hand access in stages where buzzer is not needed
   useEffect(() => {
@@ -196,6 +229,64 @@ export default function ModeratorDashboard() {
       }
     })();
   }, [stage, session?.id, raiseHandEnabled, setRaiseHandAccess]);
+
+  // Restore active 1v1 if a start timestamp exists in localStorage (so refresh doesn't reset timer)
+  useEffect(() => {
+    const isOneVsOneStage = stage === "BILL1_R2" || stage === "BILL2_R2";
+    if (!isOneVsOneStage || !session?.id) return;
+    const key = `oneVsOneStart:${session.id}:${stage}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const ts = parseInt(raw, 10);
+      if (Number.isNaN(ts)) {
+        localStorage.removeItem(key);
+        return;
+      }
+      const end = ts + ONE_VS_ONE_DURATION * 1000;
+      const rem = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      if (rem > 0) {
+        setStartTimestamp(ts);
+        setRemainingTime(rem);
+        setOneVsOneState("ACTIVE");
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [stage, session?.id]);
+
+  // 1v1 active timer effect
+  useEffect(() => {
+    if (oneVsOneState !== "ACTIVE" || !startTimestamp) return;
+    const end = startTimestamp + ONE_VS_ONE_DURATION * 1000;
+    // initialize remaining immediately
+    setRemainingTime(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
+    const id = setInterval(() => {
+      const rem = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      setRemainingTime(rem);
+      if (rem <= 0) {
+        clearInterval(id);
+        // End of debate: revert to SELECTION and clear teams/timestamps
+        setOneVsOneState("SELECTION");
+        setChallengerTeam("");
+        setOpponentTeam("");
+        setStartTimestamp(null);
+        setRemainingTime(0);
+        try {
+          const key = `oneVsOneStart:${session?.id}:${stage}`;
+          localStorage.removeItem(key);
+          const pKey = `abhimat_one_vs_one_start_${stage}`;
+          localStorage.removeItem(pKey);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, [oneVsOneState, startTimestamp, session?.id, stage]);
 
   // Handle stage changes with modal logic
   const handleStageChange = async (newStage) => {
@@ -324,6 +415,67 @@ export default function ModeratorDashboard() {
       alert("Failed to toggle raise hand access");
     } finally {
       setTogglingRaiseHand(false);
+    }
+  };
+
+  // Start the 1v1 debate (moderator action)
+  const startOneVsOne = () => {
+    if (!session?.id) return;
+    // require teams selected
+    if (!challengerTeam || !opponentTeam) {
+      alert("Select challenger and opponent before starting the 1v1 debate.");
+      return;
+    }
+    const key = `oneVsOneStart:${session.id}:${stage}`;
+    const ts = Date.now();
+    try {
+      localStorage.setItem(key, String(ts));
+      try {
+        const pKey = `abhimat_one_vs_one_start_${stage}`;
+        localStorage.setItem(pKey, String(ts));
+      } catch (err) {
+        console.error(err);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setStartTimestamp(ts);
+    setRemainingTime(ONE_VS_ONE_DURATION);
+    setOneVsOneState("ACTIVE");
+
+    // Broadcast start to participants via Realtime channel (best-effort)
+    try {
+      const ch = supabase.channel("one-vs-one");
+      // attempt to broadcast payload; wrap in try/catch to avoid runtime crash if API differs
+      if (ch && typeof ch.send === "function") {
+        ch.send({
+          type: "broadcast",
+          event: "one_vs_one_start",
+          payload: { stage, startTime: ts },
+        });
+      } else if (
+        ch &&
+        typeof ch.send === "undefined" &&
+        typeof ch.publish === "function"
+      ) {
+        // some supabase clients expose publish
+        ch.publish({
+          event: "one_vs_one_start",
+          payload: { stage, startTime: ts },
+        });
+      } else if (supabase && typeof supabase.channel === "function") {
+        // fallback: try using the client's realtime broadcast API if available
+        try {
+          ch.broadcast({
+            event: "one_vs_one_start",
+            payload: { stage, startTime: ts },
+          });
+        } catch (e) {
+          // no-op
+        }
+      }
+    } catch (err) {
+      console.error("Failed to broadcast one-vs-one start:", err);
     }
   };
 
@@ -575,6 +727,25 @@ export default function ModeratorDashboard() {
                             Opponent Selected: {opponentTeam}
                           </p>
                         )}
+
+                        {/* Moderator Start button - only enabled when both teams selected */}
+                        {role === "moderator" && (
+                          <div className="mt-3">
+                            <button
+                              onClick={startOneVsOne}
+                              disabled={
+                                !challengerTeam ||
+                                !opponentTeam ||
+                                _isStartingOneVsOne
+                              }
+                              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${!challengerTeam || !opponentTeam ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-saffron text-white hover:opacity-95"}`}
+                            >
+                              {_isStartingOneVsOne
+                                ? "Starting..."
+                                : "Start 1v1 Debate"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -593,7 +764,7 @@ export default function ModeratorDashboard() {
                         {/* Center: Timer */}
                         <div className="text-center">
                           <div className="text-4xl font-bold text-neutral-dark">
-                            {Math.max(0, timer)}s
+                            {Math.max(0, remainingTime)}s
                           </div>
                         </div>
 
