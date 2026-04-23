@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { submitPartyDetails } from '../../shared/services/api';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 
 export default function PartyDetailsForm({ user, onComplete }) {
     const [totalMembers, setTotalMembers] = useState(1);
@@ -76,7 +76,7 @@ export default function PartyDetailsForm({ user, onComplete }) {
             } else {
                 setError('Failed to upload logo.');
             }
-        } catch (err) {
+        } catch {
             setError('Error uploading logo. Please try again.');
         } finally {
             setUploadingLogo(false);
@@ -116,7 +116,7 @@ export default function PartyDetailsForm({ user, onComplete }) {
 
     return (
         <div className="fixed inset-0 bg-neutral-dark/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <motion.div
+            <Motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 className="bg-white rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-full"
@@ -222,7 +222,7 @@ export default function PartyDetailsForm({ user, onComplete }) {
                             <div className="space-y-3">
                                 <AnimatePresence initial={false}>
                                     {membersData.map((member, index) => (
-                                        <motion.div
+                                        <Motion.div
                                             key={`member-${index}`}
                                             initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
                                             animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
@@ -261,7 +261,7 @@ export default function PartyDetailsForm({ user, onComplete }) {
                                                     />
                                                 </div>
                                             </div>
-                                        </motion.div>
+                                        </Motion.div>
                                     ))}
                                 </AnimatePresence>
                             </div>
@@ -270,7 +270,7 @@ export default function PartyDetailsForm({ user, onComplete }) {
                         {/* Error Space */}
                         <AnimatePresence>
                             {error && (
-                                <motion.div
+                                <Motion.div
                                     initial={{ opacity: 0, y: -10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
@@ -278,7 +278,7 @@ export default function PartyDetailsForm({ user, onComplete }) {
                                 >
                                     <span className="material-symbols-outlined text-[18px]">error</span>
                                     {error}
-                                </motion.div>
+                                </Motion.div>
                             )}
                         </AnimatePresence>
                     </form>
@@ -309,7 +309,7 @@ export default function PartyDetailsForm({ user, onComplete }) {
                         </p>
                     )}
                 </div>
-            </motion.div>
+            </Motion.div>
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const REGISTERED_TEAMS = ["BJP", "INC", "AAP", "TMC", "SP", "BSP"];
 
@@ -12,15 +12,6 @@ export default function TeamSelectionModal({
   const [teamA, setTeamA] = useState("");
   const [teamB, setTeamB] = useState("");
   const [errors, setErrors] = useState({});
-
-  // Reset form when modal opens/closes
-  useEffect(() => {
-    if (isOpen) {
-      setTeamA("");
-      setTeamB("");
-      setErrors({});
-    }
-  }, [isOpen]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

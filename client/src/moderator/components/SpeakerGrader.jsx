@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { submitSpeakerGrade, getGradeStatus } from "../../shared/services/api";
-import { useAuth } from "../../shared/context/AuthContext";
+import { useAuth } from "../../shared/context/useAuth";
 import { isGradingAllowed } from "../../shared/utils/stageBehaviors";
 
 export default function SpeakerGrader({
@@ -56,7 +56,7 @@ export default function SpeakerGrader({
           reason: res.data.reason,
           gradesSoFar: res.data.grades_so_far,
         });
-      } catch (err) {
+      } catch {
         setStatus({
           loading: false,
           canGrade: false,
@@ -65,7 +65,7 @@ export default function SpeakerGrader({
       }
     }
     fetchStatus();
-  }, [speaker?.id]);
+  }, [speaker]);
 
   useEffect(() => {
     if (

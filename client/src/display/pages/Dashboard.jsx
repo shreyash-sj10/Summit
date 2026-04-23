@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import useUserStore from '../../store/useUserStore';
 import useSessionStore from '../../store/useSessionStore';
 import useQueueStore from '../../store/useQueueStore';
-import { useAuth } from '../../shared/context/AuthContext';
+import { useAuth } from '../../shared/context/useAuth';
 import QueueView from '../components/QueueView';
 import ActiveSpeakerView from '../components/ActiveSpeakerView';
 
 export default function DisplayDashboard() {
     const { initRealtimeUser } = useUserStore();
-    const { session, activeSpeaker, initRealtimeSession } = useSessionStore();
+    const { activeSpeaker, initRealtimeSession } = useSessionStore();
     const { initQueueRealtime } = useQueueStore();
     const { logout } = useAuth();
     const navigate = useNavigate();

@@ -1,34 +1,43 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 
 // Generic hook to subscribe to a Supabase Realtime table and keep local state in sync
 export function useRealtime(table, filter, fetcher) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const channelRef = useRef(null);
+    const fetcherRef = useRef(fetcher);
+    fetcherRef.current = fetcher;
 
-    async function refresh() {
+    const filterRef = useRef(filter);
+    filterRef.current = filter;
+
+    const filterKey = useMemo(() => JSON.stringify(filter ?? null), [filter]);
+
+    const refresh = useCallback(async () => {
         try {
-            const result = await fetcher();
+            const result = await fetcherRef.current();
             setData(result);
         } catch (e) {
             console.error(`useRealtime ${table}:`, e);
         } finally {
             setLoading(false);
         }
-    }
+    }, [table]);
 
     useEffect(() => {
-        refresh();
+        void refresh();
 
         const channel = supabase
-            .channel(`realtime:${table}:${JSON.stringify(filter)}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table, filter }, () => refresh())
+            .channel(`realtime:${table}:${filterKey}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table, filter: filterRef.current },
+                () => { void refresh(); },
+            )
             .subscribe();
 
-        channelRef.current = channel;
         return () => { supabase.removeChannel(channel); };
-    }, [table, JSON.stringify(filter)]);
+    }, [table, filterKey, refresh]);
 
     return { data, loading, refresh };
 }

@@ -1,6 +1,5 @@
-import useSessionStore from '../../store/useSessionStore';
 import FloorCenter from '../../components/floor/FloorCenter';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 
 export default function FloorStatus({ queue }) {
     const waiting = (queue || []).filter(q => q.status === 'waiting');
@@ -30,7 +29,7 @@ export default function FloorStatus({ queue }) {
                     )}
                     <AnimatePresence initial={false}>
                         {waiting.slice(0, 5).map((entry, idx) => (
-                            <motion.div
+                            <Motion.div
                                 key={entry.id}
                                 className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors cursor-default"
                                 initial={{ opacity: 0, x: -20 }}
@@ -49,7 +48,7 @@ export default function FloorStatus({ queue }) {
                                     <p className="text-sm font-semibold text-neutral-dark truncate">{entry.member?.name}</p>
                                     <p className="text-[10px] text-gray-500 uppercase font-medium">{entry.member?.party}</p>
                                 </div>
-                            </motion.div>
+                            </Motion.div>
                         ))}
                     </AnimatePresence>
                     {waiting.length > 5 && (

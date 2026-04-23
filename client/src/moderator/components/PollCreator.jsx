@@ -17,7 +17,9 @@ export default function PollCreator({ activePoll, parties, onUpdate }) {
             await createPoll(question.trim(), validOptions);
             setQuestion(''); setOptions(['', '']);
             onUpdate();
-        } catch { } finally { setLoading(false); }
+        } catch (e) {
+            console.error('Create poll failed:', e);
+        } finally { setLoading(false); }
     }
 
     async function handleClose() {
@@ -26,7 +28,9 @@ export default function PollCreator({ activePoll, parties, onUpdate }) {
         try {
             await closePoll(activePoll.id, closeParty || null, closeParty ? closePoints : null);
             onUpdate();
-        } catch { } finally { setLoading(false); }
+        } catch (e) {
+            console.error('Close poll failed:', e);
+        } finally { setLoading(false); }
     }
 
     const addOption = () => setOptions(o => [...o, '']);

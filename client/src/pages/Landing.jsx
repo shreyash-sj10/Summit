@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../shared/context/AuthContext';
+import { useAuth } from '../shared/context/useAuth';
 
 // ── Ashoka Chakra SVG ────────────────────────────────────────────────────────
 function Chakra({ size = 100 }) {
@@ -31,7 +31,9 @@ function LoginForm({ compact = false }) {
         try {
             const user = await login(memberId, password);
             navigate(user.role === 'moderator' || user.role === 'judge' ? '/moderator' : '/member');
-        } catch { }
+        } catch (e) {
+            console.error('Login failed:', e);
+        }
     }
 
     return (

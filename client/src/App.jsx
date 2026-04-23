@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './shared/context/AuthContext';
+import { AuthProvider } from './shared/context/AuthContext';
+import { useAuth } from './shared/context/useAuth';
 import Landing from './pages/Landing';
 import MemberDashboard from './member/pages/Dashboard';
 import ModeratorDashboard from './moderator/pages/Dashboard';

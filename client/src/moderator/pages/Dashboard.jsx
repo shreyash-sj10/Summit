@@ -1,23 +1,21 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import useUserStore from "../../store/useUserStore";
 import useSessionStore from "../../store/useSessionStore";
 import useQueueStore from "../../store/useQueueStore";
-import useRaiseHandStore from "../../store/useRaiseHandStore";
-import { supabase } from "../../shared/services/supabase";
+import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
 import {
   toggleRaiseHandAccess,
   saveBillData,
   saveTeamSelection,
 } from "../../shared/services/api";
+import { supabase } from "../../shared/services/supabase";
 import TopBar from "../../shared/components/TopBar";
 import FloorStatus from "../../shared/components/FloorStatus";
 import SpeakerQueue from "../components/SpeakerQueue";
 import PollCreator from "../components/PollCreator";
 import Leaderboard from "../components/Leaderboard";
 import SpeakerGrader from "../components/SpeakerGrader";
-import ChatPanel from "../../member/components/ChatPanel";
 import StageOverlay from "../../components/floor/StageOverlay";
-import PowerCardAnimation from "../../components/floor/PowerCardAnimation";
 import CustomSelect from "../../shared/components/CustomSelect";
 import BillSetupModal from "../components/BillSetupModal";
 import TeamSelectionModal from "../components/TeamSelectionModal";
@@ -92,15 +90,16 @@ export default function ModeratorDashboard() {
     fetchActiveSession,
     setBillData,
     setTeamSelection,
+    teamSelections,
     billData,
     stage,
-    teamSelections,
   } = useSessionStore();
   const { queue, initQueueRealtime } = useQueueStore();
-  const { raiseHandEnabled, setRaiseHandAccess } = useRaiseHandStore();
+  const { isEnabled: raiseHandEnabled, setWindowState } = useRaiseHandWindowStore();
 
   const [tab, setTab] = useState("session");
   const [togglingRaiseHand, setTogglingRaiseHand] = useState(false);
+  const [isStartingOneVsOne, setIsStartingOneVsOne] = useState(false);
 
   // Modal states
   const [showBillSetupModal, setShowBillSetupModal] = useState(false);
@@ -109,213 +108,34 @@ export default function ModeratorDashboard() {
   const [teamSelectionInProgress, setTeamSelectionInProgress] = useState(null); // { billNumber, stage }
   const [isModalLoading, setIsModalLoading] = useState(false);
 
-  // Local 1v1 state (BILL1_R2 / BILL2_R2 only)
-  const [oneVsOneState, setOneVsOneState] = useState(null); // "SELECTION" | "ACTIVE" | null
-  const [challengerTeam, setChallengerTeam] = useState("");
-  const [opponentTeam, setOpponentTeam] = useState("");
-  const [_isStartingOneVsOne, _setIsStartingOneVsOne] = useState(false);
-
-  // Define isStageBlocked to prevent the ReferenceError
-  const isStageBlocked = new Set([
-    "WAITING",
-    "BILL1_SETUP",
-    "BILL2_SETUP_PREP",
-    "WINNER",
-  ]).has(stage);
-
-  // 1v1 timer / start timestamp state
-  const ONE_VS_ONE_DURATION = 180; // seconds
-  const [startTimestamp, setStartTimestamp] = useState(null); // ms epoch
-  const [remainingTime, setRemainingTime] = useState(0);
-
-  // Define isOneVsOneActive derived flag
-  const isOneVsOneActive =
-    (stage === "BILL1_R2" || stage === "BILL2_R2") &&
-    oneVsOneState === "ACTIVE";
-
-  const oneVsOneTeams = useMemo(() => {
-    const unique = new Set();
-    (queue || []).forEach((entry) => {
-      const team =
-        entry.member?.party ||
-        entry.member?.team_name ||
-        entry.member?.team ||
-        entry.member?.id;
-      if (team) unique.add(team);
-    });
-    return Array.from(unique);
-  }, [queue]);
-
   // Initialize Realtime Stores on Mount
   useEffect(() => {
     initRealtimeSession();
     initQueueRealtime();
-  }, [initRealtimeSession, initQueueRealtime]);
 
-  // Keep moderator's local raise hand toggle in sync with backend 5s window lifecycle
-  useEffect(() => {
     const channel = supabase
       .channel("raise-hand-updates")
-      .on("broadcast", { event: "window_state_changed" }, (payload) => {
-        const { isEnabled } = payload.payload || {};
-        if (typeof isEnabled === "boolean") {
-          setRaiseHandAccess(isEnabled);
-        }
+      .on("broadcast", { event: "raiseHand:enabled" }, (payload) => {
+        const { timeRemaining } = payload.payload;
+        setWindowState(true, true, timeRemaining);
+      })
+      .on("broadcast", { event: "raiseHand:disabled" }, () => {
+        setWindowState(false, false, 0);
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setRaiseHandAccess]);
-
-  // Manage local 1v1 state only when in BILL1_R2 / BILL2_R2
-  useEffect(() => {
-    const isOneVsOneStage = stage === "BILL1_R2" || stage === "BILL2_R2";
-
-    // Clear everything when leaving 1v1 stages
-    if (!isOneVsOneStage) {
-      setOneVsOneState(null);
-      setChallengerTeam("");
-      setOpponentTeam("");
-      _setIsStartingOneVsOne(false);
-      setStartTimestamp(null);
-      setRemainingTime(0);
-      // remove persisted start key for previous stage/session
-      try {
-        const key = `oneVsOneStart:${session?.id}:${stage}`;
-        localStorage.removeItem(key);
-        const pKey = `abhimat_one_vs_one_start_${stage}`;
-        localStorage.removeItem(pKey);
-      } catch (err) {
-        console.error(err);
-      }
-      return;
-    }
-
-    // Enter SELECTION mode on stage entry by default
-    setOneVsOneState("SELECTION");
-
-    // Populate local challenger/opponent from store selections if available
-    try {
-      const sel =
-        stage === "BILL1_R2"
-          ? teamSelections?.bill1Round2
-          : teamSelections?.bill2Round2;
-      setChallengerTeam(sel?.teamA || "");
-      setOpponentTeam(sel?.teamB || "");
-    } catch (err) {
-      console.error(err);
-      setChallengerTeam("");
-      setOpponentTeam("");
-    }
-  }, [
-    stage,
-    session?.id,
-    teamSelections?.bill1Round2,
-    teamSelections?.bill2Round2,
-  ]);
-
-  // Auto-disable raise hand access in stages where buzzer is not needed
-  useEffect(() => {
-    const disabledStages = new Set([
-      "WAITING", // Stage 0
-      "BILL1_SETUP", // Stage 1
-      "BILL2_SETUP_PREP", // Stage 4
-      "WINNER", // Stage 7
-    ]);
-
-    if (!session?.id) return;
-    if (!disabledStages.has(stage)) return;
-    if (!raiseHandEnabled) return;
-
-    (async () => {
-      try {
-        await toggleRaiseHandAccess(false);
-        setRaiseHandAccess(false);
-      } catch (err) {
-        console.error(
-          "Failed to auto-disable raise hand access for stage",
-          stage,
-          err,
-        );
-      }
-    })();
-  }, [stage, session?.id, raiseHandEnabled, setRaiseHandAccess]);
-
-  // Restore active 1v1 if a start timestamp exists in localStorage (so refresh doesn't reset timer)
-  useEffect(() => {
-    const isOneVsOneStage = stage === "BILL1_R2" || stage === "BILL2_R2";
-    if (!isOneVsOneStage || !session?.id) return;
-    const key = `oneVsOneStart:${session.id}:${stage}`;
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-      const ts = parseInt(raw, 10);
-      if (Number.isNaN(ts)) {
-        localStorage.removeItem(key);
-        return;
-      }
-      const end = ts + ONE_VS_ONE_DURATION * 1000;
-      const rem = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-      if (rem > 0) {
-        setStartTimestamp(ts);
-        setRemainingTime(rem);
-        setOneVsOneState("ACTIVE");
-      } else {
-        localStorage.removeItem(key);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }, [stage, session?.id]);
-
-  // 1v1 active timer effect
-  useEffect(() => {
-    if (oneVsOneState !== "ACTIVE" || !startTimestamp) return;
-    const end = startTimestamp + ONE_VS_ONE_DURATION * 1000;
-    // initialize remaining immediately
-    setRemainingTime(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
-    const id = setInterval(() => {
-      const rem = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-      setRemainingTime(rem);
-      if (rem <= 0) {
-        clearInterval(id);
-        // End of debate: revert to SELECTION and clear teams/timestamps
-        setOneVsOneState("SELECTION");
-        setChallengerTeam("");
-        setOpponentTeam("");
-        setStartTimestamp(null);
-        setRemainingTime(0);
-        try {
-          const key = `oneVsOneStart:${session?.id}:${stage}`;
-          localStorage.removeItem(key);
-          const pKey = `abhimat_one_vs_one_start_${stage}`;
-          localStorage.removeItem(pKey);
-        } catch (err) {
-          console.error(err);
-        }
-      }
-    }, 1000);
-
-    return () => clearInterval(id);
-  }, [oneVsOneState, startTimestamp, session?.id, stage]);
+  }, [initRealtimeSession, initQueueRealtime, setWindowState]);
 
   // Handle stage changes with modal logic
   const handleStageChange = async (newStage) => {
-    // Prevent stage changes while 1v1 debate is active
-    if (
-      (stage === "BILL1_R2" || stage === "BILL2_R2") &&
-      oneVsOneState === "ACTIVE"
-    ) {
-      alert("Cannot change stage while a 1v1 debate is active.");
-      return;
-    }
-
-    // Determine if this stage requires bill setup
+    // Determine if this stage requires bill setup or team selection
     const requiresBillSetup = ["BILL1_SETUP", "BILL2_SETUP_PREP"].includes(
       newStage,
     );
+    const requiresTeamSelection = ["BILL1_R2", "BILL2_R2"].includes(newStage);
 
     if (requiresBillSetup) {
       // Check if bill data already exists
@@ -333,7 +153,15 @@ export default function ModeratorDashboard() {
       }
     }
 
-    // For 1v1 stages, we now handle team selection inside the stage
+    if (requiresTeamSelection) {
+      // Show team selection modal
+      const billNumber = newStage === "BILL1_R2" ? 1 : 2;
+      setTeamSelectionInProgress({ billNumber, stage: newStage });
+      setShowTeamSelectionModal(true);
+      return; // Don't change stage yet
+    }
+
+    // Otherwise, proceed normally
     await updateStage(newStage);
   };
 
@@ -344,10 +172,8 @@ export default function ModeratorDashboard() {
       // Save bill data to store
       setBillData(data.billNumber, data.billName, data.billSummary);
 
-      // Ensure stage in DB is updated before bill submission
-      const targetStage = billSetupInProgress?.stage;
-      if (session?.id && targetStage) {
-        await updateStage(targetStage);
+      // Persist to database
+      if (session?.id) {
         await saveBillData(
           session.id,
           data.billNumber,
@@ -358,6 +184,12 @@ export default function ModeratorDashboard() {
 
       // Close modal
       setShowBillSetupModal(false);
+
+      // Now actually change stage
+      const stage = billSetupInProgress?.stage;
+      if (stage) {
+        await updateStage(stage);
+      }
 
       // Reset
       setBillSetupInProgress(null);
@@ -407,88 +239,16 @@ export default function ModeratorDashboard() {
 
   // Toggle raise hand access (frontend state + backend enforcement)
   const handleToggleRaiseHandAccess = async () => {
-    // Do not allow buzzer changes while 1v1 is active
-    if (
-      (stage === "BILL1_R2" || stage === "BILL2_R2") &&
-      oneVsOneState === "ACTIVE"
-    ) {
-      alert("Raise hand (buzzer) is locked while a 1v1 debate is active.");
-      return;
-    }
-
     setTogglingRaiseHand(true);
     try {
       const newValue = !raiseHandEnabled;
       // Call backend to update in-memory store
       await toggleRaiseHandAccess(newValue);
-      // Update localStorage-backed Zustand store
-      setRaiseHandAccess(newValue);
     } catch (err) {
       console.error("Failed to toggle raise hand access:", err);
       alert("Failed to toggle raise hand access");
     } finally {
       setTogglingRaiseHand(false);
-    }
-  };
-
-  // Start the 1v1 debate (moderator action)
-  const startOneVsOne = () => {
-    if (!session?.id) return;
-    // require teams selected
-    if (!challengerTeam || !opponentTeam) {
-      alert("Select challenger and opponent before starting the 1v1 debate.");
-      return;
-    }
-    const key = `oneVsOneStart:${session.id}:${stage}`;
-    const ts = Date.now();
-    try {
-      localStorage.setItem(key, String(ts));
-      try {
-        const pKey = `abhimat_one_vs_one_start_${stage}`;
-        localStorage.setItem(pKey, String(ts));
-      } catch (err) {
-        console.error(err);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    setStartTimestamp(ts);
-    setRemainingTime(ONE_VS_ONE_DURATION);
-    setOneVsOneState("ACTIVE");
-
-    // Broadcast start to participants via Realtime channel (best-effort)
-    try {
-      const ch = supabase.channel("one-vs-one");
-      // attempt to broadcast payload; wrap in try/catch to avoid runtime crash if API differs
-      if (ch && typeof ch.send === "function") {
-        ch.send({
-          type: "broadcast",
-          event: "one_vs_one_start",
-          payload: { stage, startTime: ts },
-        });
-      } else if (
-        ch &&
-        typeof ch.send === "undefined" &&
-        typeof ch.publish === "function"
-      ) {
-        // some supabase clients expose publish
-        ch.publish({
-          event: "one_vs_one_start",
-          payload: { stage, startTime: ts },
-        });
-      } else if (supabase && typeof supabase.channel === "function") {
-        // fallback: try using the client's realtime broadcast API if available
-        try {
-          ch.broadcast({
-            event: "one_vs_one_start",
-            payload: { stage, startTime: ts },
-          });
-        } catch (e) {
-          // no-op
-        }
-      }
-    } catch (err) {
-      console.error("Failed to broadcast one-vs-one start:", err);
     }
   };
 
@@ -501,7 +261,7 @@ export default function ModeratorDashboard() {
 
   /* ── Desktop sidebar nav ─────────────────────────────────────────── */
   const Sidebar = () => (
-    <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white border-r border-gray-100 min-h-[calc(100vh-64px)] sticky top-16 overflow-y-auto z-10 transition-transform">
+    <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white border-r border-gray-100 min-h-[calc(100vh-64px)] sticky top-[64px] overflow-y-auto z-10 transition-transform">
       {/* Role badge */}
       <div className="p-5 border-b border-gray-100 group relative">
         <div className="absolute right-0 top-0 w-16 h-16 bg-saffron/5 rounded-bl-full -z-10 transition-transform group-hover:scale-110"></div>
@@ -533,11 +293,10 @@ export default function ModeratorDashboard() {
             key={id}
             onClick={() => setTab(id)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all group
-                            ${
-                              tab === id
-                                ? "bg-saffron/10 text-saffron shadow-sm"
-                                : "text-gray-500 hover:bg-gray-50 hover:text-neutral-dark hover:translate-x-1"
-                            }`}
+                            ${tab === id
+                ? "bg-saffron/10 text-saffron shadow-sm"
+                : "text-gray-500 hover:bg-gray-50 hover:text-neutral-dark hover:translate-x-1"
+              }`}
           >
             <span
               className={`material-symbols-outlined text-xl transition-transform ${tab === id ? "fill-[1] scale-110" : "group-hover:scale-110"}`}
@@ -572,7 +331,7 @@ export default function ModeratorDashboard() {
               Active Stage
             </p>
             <p className="text-sm font-bold text-india-green mt-1 truncate capitalize">
-              {(session?.stage ?? "").replace("_", " ") || "No session"}
+              {session?.stage.replace("_", " ") || "No session"}
             </p>
           </div>
         </div>
@@ -583,7 +342,6 @@ export default function ModeratorDashboard() {
   return (
     <div className="bg-background-light font-display antialiased text-neutral-dark min-h-screen relative">
       <StageOverlay />
-      <PowerCardAnimation />
       <TopBar session={session} liveCount={queue.length} />
 
       <div className="flex">
@@ -668,12 +426,12 @@ export default function ModeratorDashboard() {
                       Event Stage Governance
                     </h2>
                     <p className="text-xs text-gray-500 font-medium mt-1">
-                      Updates global allowed power cards and timer rules.
+                      Controls global speaking flow and stage-based rules.
                     </p>
                   </div>
                   <div className="z-50 relative">
                     <CustomSelect
-                      value={stage ?? session?.stage ?? null}
+                      value={stage || session?.stage || "WAITING"}
                       onChange={handleStageChange}
                       options={STAGE_OPTIONS}
                     />
@@ -697,146 +455,157 @@ export default function ModeratorDashboard() {
                     </p>
                   </div>
                   <button
-                    onClick={
-                      togglingRaiseHand || isStageBlocked || isOneVsOneActive
-                        ? undefined
-                        : handleToggleRaiseHandAccess
-                    }
-                    disabled={
-                      togglingRaiseHand || isStageBlocked || isOneVsOneActive
-                    }
-                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all whitespace-nowrap ${
-                      raiseHandEnabled
-                        ? "bg-india-green text-white hover:bg-opacity-90"
-                        : "bg-gray-300 text-gray-600"
-                    } ${togglingRaiseHand ? "opacity-75 cursor-not-allowed" : ""}`}
+                    onClick={handleToggleRaiseHandAccess}
+                    disabled={togglingRaiseHand}
+                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all active:scale-95 whitespace-nowrap ${raiseHandEnabled
+                      ? "bg-india-green text-white hover:bg-opacity-90"
+                      : "bg-gray-300 text-gray-600"
+                      } ${togglingRaiseHand ? "opacity-75 cursor-not-allowed" : ""}`}
                   >
                     {raiseHandEnabled ? "ENABLED" : "DISABLED"}
                   </button>
                 </section>
               )}
 
-              {/* 1v1 Selection Controls — Only when in BILL1_R2 / BILL2_R2 */}
+              {/* 1v1 Debate Control — only for Stage 3 & 6 */}
               {role === "moderator" &&
                 (stage === "BILL1_R2" || stage === "BILL2_R2") && (
-                  <section className="bg-white rounded-xl p-4 shadow-soft border border-gray-100 space-y-3">
-                    <h2 className="text-sm font-bold text-neutral-dark">
-                      1v1 Debate Round
-                    </h2>
-                    {oneVsOneState === "SELECTION" && (
-                      <div className="space-y-3">
-                        {!challengerTeam && !opponentTeam && (
-                          <p className="text-gray-500">
-                            Teams will be chosen after buzzer or manually using
-                            the selectors below.
-                          </p>
-                        )}
+                  <section className="bg-white rounded-xl p-4 shadow-soft border border-purple-100 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:shadow-md relative">
+                    <div>
+                      <h2 className="text-sm font-bold text-neutral-dark flex items-center gap-2">
+                        <span className="material-symbols-outlined text-purple-500 bg-purple-50 p-1.5 rounded-lg">
+                          sports_mma
+                        </span>
+                        1v1 Debate Round
+                      </h2>
+                      <p className="text-xs text-gray-500 font-medium mt-1">
+                        Select Challenger and Opponent via the 1v1 modal, then start
+                        a 3-minute face-off.
+                      </p>
+                      {(() => {
+                        const billNumber = stage === "BILL1_R2" || session?.stage === "BILL1_R2" ? 1 : 2;
+                        const key = billNumber === 1 ? "bill1Round2" : "bill2Round2";
+                        const selection = teamSelections?.[key] || {};
+                        const challenger = selection.teamA || "";
+                        const opponent = selection.teamB || "";
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                              Challenger Team
-                            </label>
-                            <select
-                              value={challengerTeam || ""}
-                              onChange={(e) =>
-                                setChallengerTeam(e.target.value || "")
-                              }
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-saffron/30 focus:border-saffron"
-                            >
-                              <option value="">Select team…</option>
-                              {oneVsOneTeams.map((team) => (
-                                <option key={team} value={team}>
-                                  {team}
-                                </option>
-                              ))}
-                            </select>
+                        const handleTeamChange = async (type, val) => {
+                          const newChallenger = type === 'A' ? val : challenger;
+                          const newOpponent = type === 'B' ? val : opponent;
+                          setTeamSelection(billNumber, newChallenger, newOpponent);
+                          if (session?.id) {
+                            try {
+                              await saveTeamSelection(session.id, billNumber, newChallenger, newOpponent);
+                            } catch (err) {
+                              console.error("Failed to save team selection:", err);
+                            }
+                          }
+                        };
+
+                        return (
+                          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Challenger</label>
+                              <select
+                                value={challenger}
+                                onChange={(e) => handleTeamChange('A', e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-dark focus:ring-2 focus:ring-purple-500 outline-none"
+                              >
+                                <option value="">Select Team</option>
+                                {PARTIES.filter(p => p !== opponent).map(p => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Opponent</label>
+                              <select
+                                value={opponent}
+                                onChange={(e) => handleTeamChange('B', e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-dark focus:ring-2 focus:ring-purple-500 outline-none"
+                              >
+                                <option value="">Select Team</option>
+                                {PARTIES.filter(p => p !== challenger).map(p => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
+                        );
+                      })()}
+                    </div>
 
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                              Opponent Team
-                            </label>
-                            <select
-                              value={opponentTeam || ""}
-                              onChange={(e) =>
-                                setOpponentTeam(e.target.value || "")
-                              }
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-saffron/30 focus:border-saffron"
-                            >
-                              <option value="">Select team…</option>
-                              {oneVsOneTeams.map((team) => (
-                                <option key={team} value={team}>
-                                  {team}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
+                    {(() => {
+                      const billNumber = stage === "BILL1_R2" || session?.stage === "BILL1_R2" ? 1 : 2;
+                      const key = billNumber === 1 ? "bill1Round2" : "bill2Round2";
+                      const selection = teamSelections?.[key] || {};
+                      const challenger = selection.teamA || null;
+                      const opponent = selection.teamB || null;
+                      const canStart = !!challenger && !!opponent;
 
-                        {challengerTeam && (
-                          <p className="text-gray-700 font-medium">
-                            Challenger Selected: {challengerTeam}
-                          </p>
-                        )}
-                        {opponentTeam && (
-                          <p className="text-gray-700 font-medium">
-                            Opponent Selected: {opponentTeam}
-                          </p>
-                        )}
+                      const handleStartOneVsOne = async () => {
+                        if (!session?.id || !canStart) return;
+                        setIsStartingOneVsOne(true);
+                        try {
+                          const startTime = Date.now();
 
-                        {role === "moderator" && (
-                          <div className="mt-3">
-                            <button
-                              onClick={startOneVsOne}
-                              disabled={
-                                !challengerTeam ||
-                                !opponentTeam ||
-                                _isStartingOneVsOne
-                              }
-                              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                                !challengerTeam || !opponentTeam
-                                  ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                                  : "bg-saffron text-white hover:opacity-95"
-                              }`}
-                            >
-                              {_isStartingOneVsOne
-                                ? "Starting..."
-                                : "Start 1v1 Debate"}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          // Persist start time to DB via team selection update
+                          try {
+                            await saveTeamSelection(
+                              session.id,
+                              billNumber,
+                              challenger,
+                              opponent,
+                              startTime,
+                            );
+                          } catch (apiErr) {
+                            console.error("Failed to save 1v1 start time:", apiErr);
+                          }
 
-                    {oneVsOneState === "ACTIVE" && (
-                      <div className="grid grid-cols-3 gap-4 items-center">
-                        {/* Left Side: Challenger */}
-                        <div className="text-center">
-                          <h3 className="text-lg font-bold text-saffron">
-                            {challengerTeam}
-                          </h3>
-                          <div className="text-sm text-gray-500">
-                            Challenger
-                          </div>
-                        </div>
+                          try {
+                            await supabase.channel("one-vs-one").send({
+                              type: "broadcast",
+                              event: "one_vs_one_start",
+                              payload: {
+                                sessionId: session.id,
+                                stage,
+                                startTime,
+                              },
+                            });
+                          } catch (broadcastErr) {
+                            console.error(
+                              "Failed to broadcast 1v1 start event:",
+                              broadcastErr,
+                            );
+                          }
+                        } finally {
+                          setIsStartingOneVsOne(false);
+                        }
+                      };
 
-                        {/* Center: Timer */}
-                        <div className="text-center">
-                          <div className="text-4xl font-bold text-neutral-dark">
-                            {Math.max(0, remainingTime)}s
-                          </div>
-                        </div>
-
-                        {/* Right Side: Opponent */}
-                        <div className="text-center">
-                          <h3 className="text-lg font-bold text-india-green">
-                            {opponentTeam}
-                          </h3>
-                          <div className="text-sm text-gray-500">Opponent</div>
-                        </div>
-                      </div>
-                    )}
+                      return (
+                        <button
+                          type="button"
+                          onClick={handleStartOneVsOne}
+                          disabled={!canStart || isStartingOneVsOne}
+                          className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:scale-[0.97] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap self-end sm:mt-0 mt-2"
+                        >
+                          {isStartingOneVsOne ? (
+                            <>
+                              <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Starting…
+                            </>
+                          ) : (
+                            <>
+                              <span className="material-symbols-outlined text-sm">
+                                start
+                              </span>
+                              Start 1v1 Debate
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
                   </section>
                 )}
 
@@ -872,9 +641,8 @@ export default function ModeratorDashboard() {
                 )}
               </div>
 
-              {/* Re-integrated Chat Panel for Moderator side */}
               <div className="flex flex-col gap-4">
-                <ChatPanel sessionId={session?.id} />
+                <Leaderboard leaderboard={leaderboard} />
               </div>
             </div>
           )}
@@ -924,6 +692,7 @@ export default function ModeratorDashboard() {
       />
 
       <TeamSelectionModal
+        key={teamSelectionInProgress?.stage ?? "team-select-closed"}
         isOpen={showTeamSelectionModal}
         onClose={() => setShowTeamSelectionModal(false)}
         onSubmit={handleTeamSelectionSubmit}

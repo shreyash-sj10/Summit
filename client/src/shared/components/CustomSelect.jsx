@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 
 export default function CustomSelect({ value, onChange, options }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -40,7 +40,7 @@ export default function CustomSelect({ value, onChange, options }) {
 
             <AnimatePresence>
                 {isOpen && (
-                    <motion.div
+                    <Motion.div
                         initial={{ opacity: 0, y: -10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -78,7 +78,7 @@ export default function CustomSelect({ value, onChange, options }) {
                                 </li>
                             ))}
                         </ul>
-                    </motion.div>
+                    </Motion.div>
                 )}
             </AnimatePresence>
         </div>

@@ -54,7 +54,7 @@ router.get('/grade/status', authMiddleware, officialOnly, async (req, res) => {
 });
 
 // POST /moderator/grade
-// Submits a single grade. If it's the 4th grade for this turn, triggers final point tally & cards.
+// Submits a single grade. If it's the 4th grade for this turn, triggers final point tally.
 router.post('/grade', authMiddleware, officialOnly, async (req, res) => {
     let { session_id, member_id, speaking = 0, relevance = 0, preparedness = 0, poll_score = 0 } = req.body;
 
@@ -119,45 +119,7 @@ router.post('/grade', authMiddleware, officialOnly, async (req, res) => {
     if (count === 4) {
         // All 4 have voted! Tally final score
         const final_score = allGrades.reduce((acc, curr) => acc + curr.total_points, 0);
-
-        // 3. Determine power cards based on new thresholds: 250, 500, 750
-        const cardsToGrant = [];
-        if (final_score >= 750) {
-            cardsToGrant.push('interrupt');
-        } else if (final_score >= 500) {
-            cardsToGrant.push('add_time');
-        } else if (final_score >= 250) {
-            cardsToGrant.push('interrupt');
-        }
-
-        // 4. Check team cap: 5 power cards max per team per session
-        if (cardsToGrant.length > 0) {
-            const { data: member } = await supabase.from('members').select('party').eq('id', member_id).single();
-            
-            if (member) {
-                // Count used cards for this team in this session
-                const { count: usedCardCount } = await supabase
-                    .from('power_cards')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('session_id', session_id)
-                    .in('member_id', 
-                        (await supabase.from('members').select('id').eq('party', member.party)).data?.map(m => m.id) || []
-                    )
-                    .eq('is_used', true);
-
-                // Only grant if team hasn't reached 5 used cards yet
-                if ((usedCardCount || 0) < 5) {
-                    const cardInserts = cardsToGrant.map(card_type => ({
-                        session_id,
-                        member_id,
-                        card_type
-                    }));
-                    await supabase.from('power_cards').insert(cardInserts);
-                }
-            }
-        }
-
-        // 5. Update Team Points
+        // 3. Update Team Points
         const { data: member } = await supabase.from('members').select('party').eq('id', member_id).single();
         if (member) {
             const { data: teamPoint } = await supabase
@@ -182,7 +144,7 @@ router.post('/grade', authMiddleware, officialOnly, async (req, res) => {
             }
         }
 
-        return res.json({ success: true, message: 'Final grade received. Scored ' + final_score, is_final: true, cards: cardsToGrant, total_score: final_score });
+        return res.json({ success: true, message: 'Final grade received. Scored ' + final_score, is_final: true, total_score: final_score });
     }
 
     res.json({ success: true, message: `Grade logged. ${count}/4 officials have graded so far.`, is_final: false, partial_points: total_points });

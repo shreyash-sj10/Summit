@@ -3,6 +3,7 @@ import { supabase } from "../shared/services/supabase";
 import {
   getActiveSession,
   updateSessionStage,
+  saveTeamSelection,
   getActivePoll,
   getLeaderboard,
 } from "../shared/services/api";
@@ -41,7 +42,7 @@ const useSessionStore = create((set, get) => ({
     },
   },
 
-  // Team selections for 1v1 rounds
+  // Team selections and 1v1 state
   teamSelections: {
     bill1Round2: {
       teamA: null,
@@ -52,6 +53,8 @@ const useSessionStore = create((set, get) => ({
       teamB: null,
     },
   },
+  oneVsOneState: "SELECTION", // "SELECTION" or "ACTIVE"
+  oneVsOneStartTime: null,
 
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
@@ -84,6 +87,23 @@ const useSessionStore = create((set, get) => ({
     }));
   },
 
+  resetOneVsOne: async () => {
+    const { session, stage } = get();
+    set({
+      oneVsOneState: "SELECTION",
+      oneVsOneStartTime: null,
+    });
+
+    if (session?.id && (stage === "BILL1_R2" || stage === "BILL2_R2")) {
+      const billNumber = stage === "BILL1_R2" ? 1 : 2;
+      try {
+        await saveTeamSelection(session.id, billNumber, null, null);
+      } catch (err) {
+        console.error("Failed to reset teams in DB:", err);
+      }
+    }
+  },
+
   fetchActiveSession: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -94,23 +114,36 @@ const useSessionStore = create((set, get) => ({
       ]);
       const sess = sessRes.data.session;
       const activeSpk = sess?.current_speaker;
+      const stageVal = sess?.stage || "WAITING";
+      const teamSelections = sess?.team_selections || {
+        bill1Round2: { teamA: null, teamB: null },
+        bill2Round2: { teamA: null, teamB: null },
+      };
+
+      let oneVsOneState = "SELECTION";
+      let oneVsOneStartTime = null;
+      if (stageVal === "BILL1_R2" || stageVal === "BILL2_R2") {
+        const key = stageVal === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
+        const sel = teamSelections[key] || {};
+        const st = sel.startTime;
+        if (typeof st === "number" && st > 0) {
+          const elapsed = Date.now() - st;
+          if (elapsed >= 0 && elapsed < 180000) {
+            oneVsOneState = "ACTIVE";
+            oneVsOneStartTime = st;
+          }
+        }
+      }
+
       set({
         session: sess,
-        stage: sess?.stage ?? null,
-        activeSpeaker: activeSpk,
+        stage: stageVal,
+        teamSelections,
+        oneVsOneState,
+        oneVsOneStartTime,
         poll: pollRes.data.poll,
         leaderboard: leadRes.data.leaderboard || [],
       });
-
-      // Sync 1v1 team selections from session payload when available
-      if (sess?.team_selections) {
-        set((state) => ({
-          teamSelections: {
-            ...state.teamSelections,
-            ...sess.team_selections,
-          },
-        }));
-      }
 
       // Reconstruct timer if someone is speaking
       if (!activeSpk) {
@@ -170,32 +203,34 @@ const useSessionStore = create((set, get) => ({
         { event: "*", schema: "public", table: "team_points" },
         () => fetchActiveSession(),
       )
-      .on("broadcast", { event: "card_used" }, (payload) => {
-        const { card_type, user_name } = payload.payload;
-        const state = get();
-        if (card_type === "add_time") {
-          set({ timerLimit: state.timerLimit + 60 });
-        } else if (card_type === "interrupt") {
-          set({
-            isTimerRunning: false,
-            interruptInfo: { name: user_name, time_left: 20 },
-          });
-        } else if (card_type === "challenge") {
-          set({
-            isTimerRunning: false,
-            challengeInfo: {
-              phase: 1,
-              name1: user_name,
-              name2: state.activeSpeaker?.name || "Speaker",
-              time_left: 90,
-            },
-          });
-        }
-      })
       .on("broadcast", { event: "stage:update" }, (payload) => {
         // Update local stage when server broadcasts a stage change
         const { stage } = payload.payload;
-        set({ stage });
+        set({
+          stage,
+          oneVsOneState: "SELECTION",
+          oneVsOneStartTime: null,
+        });
+      })
+      .subscribe();
+
+    // 1v1 Start listener
+    supabase
+      .channel("one-vs-one")
+      .on("broadcast", { event: "one_vs_one_start" }, (payload) => {
+        const { startTime } = payload.payload;
+        set({
+          oneVsOneState: "ACTIVE",
+          oneVsOneStartTime: startTime,
+        });
+      })
+      .subscribe();
+
+    // Team selection listener
+    supabase
+      .channel("team-selection-updates")
+      .on("broadcast", { event: "team-selection:update" }, () => {
+        get().fetchActiveSession();
       })
       .subscribe();
 
@@ -210,7 +245,7 @@ const useSessionStore = create((set, get) => ({
       await updateSessionStage(session.id, newStage);
       // DO NOT update local state here - wait for socket 'stage:update' broadcast
       // The server will broadcast the stage change to all clients
-    } catch (err) {
+    } catch {
       set({ error: "Failed to update stage" });
     }
   },

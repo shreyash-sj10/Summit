@@ -3,7 +3,7 @@ import useSessionStore from '../../store/useSessionStore';
 import { getPartyDetails } from '../../shared/services/api';
 
 export default function ActiveSpeakerView() {
-    const { session, timer, timerLimit, activeSpeaker, isTimerRunning } = useSessionStore();
+    const { timer, timerLimit, activeSpeaker, isTimerRunning } = useSessionStore();
     const [partyDetails, setPartyDetails] = useState(null);
 
     // Fetch Party details to get the high res logo

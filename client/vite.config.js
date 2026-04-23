@@ -43,7 +43,6 @@ export default defineConfig({
       '/hand': 'http://localhost:3001',
       '/queue': 'http://localhost:3001',
       '/speaker': 'http://localhost:3001',
-      '/chat': 'http://localhost:3001',
       '/polls': 'http://localhost:3001',
       '/points': 'http://localhost:3001',
     },

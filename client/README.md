@@ -1,98 +1,48 @@
-# React + Vite
+# ABHIMAT Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for the interview-focused ABHIMAT governance platform.
 
-Currently, two official plugins are available:
+## Scope (Current)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The frontend intentionally focuses on defendable system flows:
+- Role-based portals: `member`, `moderator`, `judge`, `display`
+- Real-time queue and floor synchronization
+- Stage-governed session flow (8-stage model)
+- Polling and leaderboard views
+- Official grading workflow
 
-## React Compiler
+The following modules are intentionally removed from active scope:
+- Chat
+- Power cards
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Architecture
 
-## Expanding the ESLint configuration
+State is centralized in Zustand stores:
+- `useSessionStore`: active session, stage, timer, poll, leaderboard, realtime subscriptions
+- `useQueueStore`: queue fetch + realtime refresh + speaker actions
+- `useUserStore`: authenticated user profile + role state
+- `useRaiseHandWindowStore`: buzzer window state and acknowledgement status
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Flow:
+`Backend/Supabase Realtime -> Zustand Stores -> Role Dashboards`
 
-## Zustand State Architecture
+## Key Directories
 
-The frontend state and Supabase Realtime subscriptions have been centralized using **Zustand**. 
+- `src/member`: participant views
+- `src/moderator`: moderator/judge views
+- `src/display`: projection dashboard
+- `src/shared`: API client, auth context, shared UI primitives
+- `src/store`: centralized runtime state
 
-### Flow
-`Supabase -> Zustand Store -> UI`
+## Local Development
 
-No React components subscribe to Supabase directly, manage timers, or execute network fetches in `useEffect`. Components operate strictly as pure render layers.
+```bash
+npm install
+npm run dev
+```
 
-### Stores
-- `useSessionStore`: Manages session state, global voting/poll status, and centralized timer logic with automatic sync limits based on backend data. 
-- `useQueueStore`: Handles all raising hands, queue status, and transitions. 
-- `useUserStore`: Stores user objects, JWT authentication in `localStorage`, and handles power cards and specific user realtime hooks.
+## Build
 
-### Refactored Files
-- `shared/components/FloorStatus.jsx`
-- `moderator/components/SpeakerQueue.jsx`
-- `moderator/pages/Dashboard.jsx`
-- `member/pages/Dashboard.jsx`
-
----
-
-## Realtime Chat Restoration
-
-The previously removed Realtime Chat has been fully restored and integrated into the global Zustand store architecture. 
-
-### Chat Architecture Flow
-`Supabase (chat_messages INSERT) -> useChatStore -> UI`
-
-### Improvements
-- **Multi-Tab Sync**: Leveraging exactly one `supabase.channel` subscription per active room securely handled in the `useChatStore`. Eliminates duplicate messages or runaway listener memory leaks. 
-- **Predictable UX**: The Chat Panel instantly updates with incoming messages (no refresh required) and automatically scrolls downward only when necessary.
-- **Premium Styling**: Bubble chat UI layout added, along with polished interaction feed (hover shadows, button tap scales, entry animations).
-
----
-
-## Real-Time Floor Experience System
-
-Cinematic UI upgrade using **Framer Motion** for state-driven animations. All animations react exclusively to Zustand store state. No animation logic inside stores.
-
-### New Floor Components (`components/floor/`)
-- `FloorCenter.jsx` — Animated active speaker panel with glow, pulse on urgency, and `AnimatePresence` transitions.
-- `TimerDisplay.jsx` — Circular SVG countdown with green→yellow→red color progression, shake at 5s, flash at 0.
-- `StageOverlay.jsx` — Full-screen backdrop-blur banner on stage changes, auto-dismisses after 3s.
-- `PowerCardAnimation.jsx` — Floating notification toasts for interrupt, challenge, and add-time card activations.
-
-### Upgraded Components
-- `Leaderboard.jsx` — Animated ranking transitions with layout animations and floating crown for #1.
-- `FloorStatus.jsx` — Now wraps `FloorCenter` and uses animated queue list.
-
----
-
-## Moderator Chat Control
-
-Moderators can clear all session chat messages instantly across all connected clients.
-
-### Architecture
-- Store action: `useChatStore.clearChat()` calls `DELETE /chat` API.
-- Backend enforces `role === 'moderator'` check before deletion.
-- Realtime `DELETE` event listener in `useChatStore` ensures all tabs clear instantly, no refresh needed.
-- Confirmation modal prevents accidental deletion.
-
----
-
-## Registration Form UX Improvement
-
-Redesigned the initial ``PartyDetailsForm`` to drastically improve mobile usability and fix input bugs.
-
-- **Participant count control redesign:** Replaced the buggy uncontrolled numeric input with a controlled, tap-friendly step-based selector (`-` and `+` buttons).
-- **Mobile-first optimization:** Improved layout spacing, touch target sizes (>44px), and eliminated keyboard pop-up issues for numeric limits. 
-- **Validation improvements:** Added real-time validation checks that disable the submit button until all required fields and logo uploads are complete, accompanied by smooth `framer-motion` error animations.
-
----
-
-## Participant Leaderboard Integration
-
-Integrated the global Team Leaderboard directly into the Member Dashboard to foster competitive engagement.
-
-- **Side-by-side Layout:** Reorganized the 'Polls' tab to feature the active poll alongside the live Leaderboard on desktop screens.
-- **Dynamic Slicing:** The Leaderboard defaults to displaying only the Top 10 parties to keep the UI focused and readable.
-- **Expandable View:** Added an interactive 'Show All Teams' toggle that allows members to seamlessly reveal the full ranking of every registered party at any stage of the game, complete with smooth layout transitions.
+```bash
+npm run build
+```

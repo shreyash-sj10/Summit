@@ -1,325 +1,28 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import useUserStore from "../../store/useUserStore";
 import useSessionStore from "../../store/useSessionStore";
 import useQueueStore from "../../store/useQueueStore";
 import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
-import { MAX_SPEECHES_PER_BILL } from "../../shared/constants";
-import BillAnnouncement from "../components/BillAnnouncement";
-import OneVsOneLayout from "../components/OneVsOneLayout";
-import NormalDebateLayout from "../components/NormalDebateLayout";
 import { getPartyDetails, getRaiseHandStatus } from "../../shared/services/api";
 import { supabase } from "../../shared/services/supabase";
 import TopBar from "../../shared/components/TopBar";
 import FloorStatus from "../../shared/components/FloorStatus";
 import RaiseHandButton from "../components/RaiseHandButton";
 import PollCard from "../components/PollCard";
-import PowerCards from "../components/PowerCards";
 import PartyDetailsForm from "../components/PartyDetailsForm";
-import ChatPanel from "../components/ChatPanel";
 import StageOverlay from "../../components/floor/StageOverlay";
-import PowerCardAnimation from "../../components/floor/PowerCardAnimation";
 import Leaderboard from "../../moderator/components/Leaderboard";
 import WaitingRoom from "../components/WaitingRoom";
+import OneVsOneLayout from "../components/OneVsOneLayout";
 
 const TABS = [
   { id: "home", icon: "dashboard", label: "Session" },
   { id: "polls", icon: "leaderboard", label: "Polls" },
-  { id: "chat", icon: "forum", label: "Chat" },
 ];
 
-export default function MemberDashboard() {
-  const { user, powerCards, fetchCards, initRealtimeUser } = useUserStore();
-  const {
-    session,
-    poll,
-    leaderboard,
-    fetchActiveSession,
-    initRealtimeSession,
-    billData,
-    teamSelections,
-    timer,
-    timerLimit,
-  } = useSessionStore();
-  const { queue, initQueueRealtime } = useQueueStore();
-  const { isWindowActive, timeRemaining, setWindowState, setTimeRemaining } =
-    useRaiseHandWindowStore();
-
-  const [partyDetails, setPartyDetails] = useState(undefined); // undefined = loading, null = not found
-  const [tab, setTab] = useState("home");
-  const [oneVsOneState, setOneVsOneState] = useState(null); // "SELECTION" | "ACTIVE" | null
-  const [oneVsOneStartTime, setOneVsOneStartTime] = useState(null);
-  const [oneVsOneRemaining, setOneVsOneRemaining] = useState(180);
-  const [oneVsOneChallenger, setOneVsOneChallenger] = useState(null);
-  const [oneVsOneOpponent, setOneVsOneOpponent] = useState(null);
-  const oneVsOneTimerRef = useRef(null);
-
-  const myQueueEntry = queue.find((q) => q.member?.id === user?.id);
-
-  const loadParty = useCallback(async () => {
-    if (!user?.party) {
-      setPartyDetails(null);
-      return;
-    }
-    try {
-      const res = await getPartyDetails(user.party);
-      if (!res.data) {
-        setPartyDetails(null);
-      } else {
-        setPartyDetails(res.data);
-      }
-    } catch (err) {
-      // Check specifically for 404 or missing table errors
-      if (
-        err.response?.status === 404 ||
-        err.response?.data?.message?.includes("not found")
-      ) {
-        setPartyDetails(null);
-      } else {
-        console.error("Failed to load party details:", err);
-        setPartyDetails(null); // Fallback to prompt form rather than stay stuck undefined
-      }
-    }
-  }, [user?.party]);
-
-  // Subscribe to raise hand window broadcasts via Realtime
-  useEffect(() => {
-    const channel = supabase
-      .channel("raise-hand-updates")
-      .on("broadcast", { event: "window_state_changed" }, (payload) => {
-        const { isEnabled, isWindowActive, timeRemaining } = payload.payload;
-        setWindowState(isEnabled, isWindowActive, timeRemaining);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [setWindowState]);
-
-  // Poll for raise hand window status every 500ms when window is active
-  useEffect(() => {
-    const pollWindowStatus = async () => {
-      try {
-        const res = await getRaiseHandStatus();
-        const {
-          isEnabled,
-          isWindowActive: active,
-          timeRemaining: remaining,
-        } = res.data;
-        setWindowState(isEnabled, active, remaining);
-      } catch (err) {
-        console.error("Failed to poll raise hand status:", err);
-      }
-    };
-
-    // Initial poll immediately
-    pollWindowStatus();
-
-    // Set up polling interval - poll frequently to track countdown accurately
-    const interval = setInterval(pollWindowStatus, 500);
-
-    return () => clearInterval(interval);
-  }, [setWindowState]);
-
-  // Local countdown timer to update UI more smoothly
-  useEffect(() => {
-    if (!isWindowActive || timeRemaining <= 0) {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setTimeRemaining(timeRemaining - 100);
-    }, 100);
-
-    return () => clearInterval(timer);
-  }, [isWindowActive, timeRemaining, setTimeRemaining]);
-
-  useEffect(() => {
-    initRealtimeSession();
-    initQueueRealtime();
-    initRealtimeUser();
-    fetchCards();
-    loadParty();
-  }, [
-    initRealtimeSession,
-    initQueueRealtime,
-    initRealtimeUser,
-    fetchCards,
-    loadParty,
-  ]);
-
-  const speechesLeft = Math.max(
-    0,
-    MAX_SPEECHES_PER_BILL - (user?.speeches_count || 0),
-  );
-
-  // Manage local 1v1 state only for BILL1_R2 / BILL2_R2
-  // On stage entry, default to SELECTION unless a valid start timestamp exists (refresh case)
-  useEffect(() => {
-    const currentStage = session?.stage;
-    const isOneVsOneStage =
-      currentStage === "BILL1_R2" || currentStage === "BILL2_R2";
-
-    if (!isOneVsOneStage) {
-      setOneVsOneState(null);
-      setOneVsOneStartTime(null);
-      setOneVsOneRemaining(180);
-      setOneVsOneChallenger(null);
-      setOneVsOneOpponent(null);
-      if (oneVsOneTimerRef.current) {
-        clearInterval(oneVsOneTimerRef.current);
-        oneVsOneTimerRef.current = null;
-      }
-      return;
-    }
-
-    const storageKey = `abhimat_one_vs_one_start_${currentStage}`;
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (raw) {
-        const ts = Number(raw);
-        if (!Number.isNaN(ts)) {
-          const elapsed = Math.floor((Date.now() - ts) / 1000);
-          const remaining = Math.max(0, 180 - elapsed);
-          if (remaining > 0) {
-            setOneVsOneState("ACTIVE");
-            setOneVsOneStartTime(ts);
-            setOneVsOneRemaining(remaining);
-            return;
-          }
-          // Expired – clear stored timestamp
-          window.localStorage.removeItem(storageKey);
-        }
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-
-    // Fallback: selection mode, no active timer
-    setOneVsOneState("SELECTION");
-    setOneVsOneStartTime(null);
-    setOneVsOneRemaining(180);
-    setOneVsOneChallenger(null);
-    setOneVsOneOpponent(null);
-  }, [session?.stage]);
-
-  // Mirror moderator team selection into local challenger/opponent during SELECTION (no active round)
-  useEffect(() => {
-    const currentStage = session?.stage;
-    const isOneVsOneStage =
-      currentStage === "BILL1_R2" || currentStage === "BILL2_R2";
-
-    if (!isOneVsOneStage) return;
-    if (oneVsOneState !== "SELECTION" || oneVsOneStartTime) return;
-
-    const key = currentStage === "BILL1_R2" ? "bill1Round2" : "bill2Round2";
-    const selection =
-      session?.team_selections?.[key] || teamSelections?.[key] || null;
-
-    setOneVsOneChallenger(selection?.teamA || null);
-    setOneVsOneOpponent(selection?.teamB || null);
-  }, [
-    session?.stage,
-    session?.team_selections,
-    teamSelections,
-    oneVsOneState,
-    oneVsOneStartTime,
-  ]);
-
-  // Listen for 1v1 start broadcasts to activate timer with a shared start timestamp
-  useEffect(() => {
-    const channel = supabase
-      .channel("one-vs-one")
-      .on("broadcast", { event: "one_vs_one_start" }, (payload) => {
-        const { stage: startedStage, startTime } = payload.payload || {};
-        const currentStage = session?.stage;
-        if (!startedStage || !startTime) return;
-        if (currentStage !== startedStage) return;
-
-        const ts = Number(startTime);
-        if (Number.isNaN(ts)) return;
-
-        const elapsed = Math.floor((Date.now() - ts) / 1000);
-        const remaining = Math.max(0, 180 - elapsed);
-        if (remaining <= 0) return;
-
-        setOneVsOneState("ACTIVE");
-        setOneVsOneStartTime(ts);
-        setOneVsOneRemaining(remaining);
-
-        try {
-          const storageKey = `abhimat_one_vs_one_start_${startedStage}`;
-          window.localStorage.setItem(storageKey, String(ts));
-        } catch {
-          // Ignore localStorage errors
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [session?.stage]);
-
-  // 180-second 1v1 timer — derived from a shared start timestamp
-  useEffect(() => {
-    const currentStage = session?.stage;
-    const isOneVsOneStage =
-      currentStage === "BILL1_R2" || currentStage === "BILL2_R2";
-
-    if (!isOneVsOneStage || oneVsOneState !== "ACTIVE" || !oneVsOneStartTime) {
-      if (oneVsOneTimerRef.current) {
-        clearInterval(oneVsOneTimerRef.current);
-        oneVsOneTimerRef.current = null;
-      }
-      return;
-    }
-
-    const updateRemaining = () => {
-      const elapsed = Math.floor((Date.now() - oneVsOneStartTime) / 1000);
-      const remaining = Math.max(0, 180 - elapsed);
-      setOneVsOneRemaining(remaining);
-      if (remaining <= 0 && oneVsOneTimerRef.current) {
-        clearInterval(oneVsOneTimerRef.current);
-        oneVsOneTimerRef.current = null;
-
-        // Round ended: return to SELECTION, clear local 1v1 state, but keep stage
-        setOneVsOneState("SELECTION");
-        setOneVsOneStartTime(null);
-        setOneVsOneRemaining(180);
-        setOneVsOneChallenger(null);
-        setOneVsOneOpponent(null);
-
-        try {
-          const storageKey = `abhimat_one_vs_one_start_${session?.stage}`;
-          if (storageKey) window.localStorage.removeItem(storageKey);
-        } catch {
-          // Ignore localStorage errors
-        }
-      }
-    };
-
-    // Initial sync
-    updateRemaining();
-
-    if (oneVsOneTimerRef.current) {
-      clearInterval(oneVsOneTimerRef.current);
-    }
-
-    oneVsOneTimerRef.current = setInterval(updateRemaining, 1000);
-
-    return () => {
-      if (oneVsOneTimerRef.current) {
-        clearInterval(oneVsOneTimerRef.current);
-        oneVsOneTimerRef.current = null;
-      }
-    };
-  }, [session?.stage, oneVsOneState, oneVsOneStartTime]);
-
-  /* ── Desktop sidebar nav ─────────────────────────────────────────── */
-  const Sidebar = () => (
+function MemberDesktopSidebar({ tab, setTab, user, partyDetails, speechesLeft }) {
+  return (
     <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white border-r border-gray-100 min-h-[calc(100vh-64px)] sticky top-[64px] overflow-y-auto transition-transform">
-      {/* Profile summary */}
       <div className="p-5 border-b border-gray-100 relative group">
         {partyDetails?.logo_url && (
           <img
@@ -352,18 +55,16 @@ export default function MemberDashboard() {
         </div>
       </div>
 
-      {/* Nav items */}
       <nav className="flex-1 p-3 flex flex-col gap-1">
         {TABS.map(({ id, icon, label }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all hover:bg-gray-50
-                            ${
-                              tab === id
-                                ? "bg-saffron/10 text-saffron shadow-sm"
-                                : "text-gray-500 hover:text-neutral-dark"
-                            }`}
+                            ${tab === id
+                ? "bg-saffron/10 text-saffron shadow-sm"
+                : "text-gray-500 hover:text-neutral-dark"
+              }`}
           >
             <span
               className={`material-symbols-outlined text-xl transition-transform ${tab === id ? "fill-[1] scale-110" : ""}`}
@@ -375,7 +76,6 @@ export default function MemberDashboard() {
         ))}
       </nav>
 
-      {/* Quick stats in sidebar */}
       <div className="p-4 border-t border-gray-100">
         <div className="bg-gray-50 rounded-xl p-4 space-y-3 shadow-inner">
           <div>
@@ -386,20 +86,12 @@ export default function MemberDashboard() {
               <span className="text-xl font-black text-neutral-dark">
                 {speechesLeft}
               </span>
-              <span className="text-sm font-bold text-gray-400">
-                / {MAX_SPEECHES_PER_BILL}
-              </span>
+              <span className="text-sm font-bold text-gray-400">/ 2</span>
             </div>
             <div className="h-1.5 w-full bg-gray-200 rounded-full mt-2 overflow-hidden shadow-inner">
               <div
                 className="h-full bg-accent transition-all duration-500"
-                style={{
-                  width: `${
-                    ((MAX_SPEECHES_PER_BILL - speechesLeft) /
-                      MAX_SPEECHES_PER_BILL) *
-                    100
-                  }%`,
-                }}
+                style={{ width: `${(speechesLeft / 2) * 100}%` }}
               />
             </div>
           </div>
@@ -415,11 +107,150 @@ export default function MemberDashboard() {
       </div>
     </aside>
   );
+}
 
-  const stage = session?.stage;
+export default function MemberDashboard() {
+  const { user, initRealtimeUser } = useUserStore();
+  const {
+    session,
+    poll,
+    leaderboard,
+    fetchActiveSession,
+    initRealtimeSession,
+    oneVsOneState,
+    oneVsOneStartTime,
+    teamSelections,
+    resetOneVsOne,
+  } = useSessionStore();
+  const { queue, initQueueRealtime } = useQueueStore();
+  const { isWindowActive, timeRemaining, setWindowState, setTimeRemaining } =
+    useRaiseHandWindowStore();
+
+  const [partyDetails, setPartyDetails] = useState(undefined); // undefined = loading, null = not found
+  const [tab, setTab] = useState("home");
+
+  const myQueueEntry = queue.find((q) => q.member?.id === user?.id);
+  const is1v1 = session?.stage === "BILL1_R2" || session?.stage === "BILL2_R2";
+  const isBuzzerStage = ["BILL1_R1", "BILL1_R2", "BILL2_R1", "BILL2_R2"].includes(session?.stage);
+
+  const loadParty = useCallback(async () => {
+    if (!user?.party) {
+      setPartyDetails(null);
+      return;
+    }
+    try {
+      const res = await getPartyDetails(user.party);
+      if (!res.data) {
+        setPartyDetails(null);
+      } else {
+        setPartyDetails(res.data);
+      }
+    } catch (err) {
+      // Check specifically for 404 or missing table errors
+      if (
+        err.response?.status === 404 ||
+        err.response?.data?.message?.includes("not found")
+      ) {
+        setPartyDetails(null);
+      } else {
+        console.error("Failed to load party details:", err);
+        setPartyDetails(null); // Fallback to prompt form rather than stay stuck undefined
+      }
+    }
+  }, [user]);
+
+  // Subscribe to raise hand window broadcasts via Realtime
+  useEffect(() => {
+    const channel = supabase
+      .channel("raise-hand-updates")
+      .on("broadcast", { event: "raiseHand:enabled" }, (payload) => {
+        const { timeRemaining } = payload.payload;
+        // Strict CONTRACT: Reset hasRaisedHand when a new window opens
+        useRaiseHandWindowStore.getState().setHasRaisedHand(false);
+        setWindowState(true, true, timeRemaining);
+      })
+      .on("broadcast", { event: "raiseHand:disabled" }, () => {
+        setWindowState(false, false, 0);
+      })
+      .on("broadcast", { event: "raiseHand:acknowledged" }, (payload) => {
+        const { memberId } = payload.payload;
+        if (memberId === user?.id) {
+          useRaiseHandWindowStore.getState().setHasRaisedHand(true);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [setWindowState, user?.id]);
+
+  // Poll for raise hand window status every 500ms when window is active
+  useEffect(() => {
+    const pollWindowStatus = async () => {
+      try {
+        const res = await getRaiseHandStatus();
+        const {
+          isEnabled,
+          isWindowActive: active,
+          timeRemaining: remaining,
+        } = res.data;
+        setWindowState(isEnabled, active, remaining);
+      } catch (err) {
+        console.error("Failed to poll raise hand status:", err);
+      }
+    };
+
+    // Initial poll immediately
+    pollWindowStatus();
+
+    // Set up polling interval - poll frequently to track countdown accurately
+    const interval = setInterval(pollWindowStatus, 500);
+
+    return () => clearInterval(interval);
+  }, [setWindowState]);
+
+  // Local countdown timer to update UI more smoothly
+  useEffect(() => {
+    if (!isWindowActive) return;
+
+    if (timeRemaining <= 0) {
+      // Force close window when timer hits zero locally
+      setWindowState(true, false, 0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      const nextRemaining = timeRemaining - 100;
+      if (nextRemaining <= 0) {
+        setWindowState(true, false, 0);
+      } else {
+        setTimeRemaining(nextRemaining);
+      }
+    }, 100);
+
+    return () => clearInterval(timer);
+  }, [isWindowActive, timeRemaining, setTimeRemaining, setWindowState]);
+
+  useEffect(() => {
+    initRealtimeSession();
+    initQueueRealtime();
+    initRealtimeUser();
+    const t = window.setTimeout(() => {
+      void loadParty();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [
+    initRealtimeSession,
+    initQueueRealtime,
+    initRealtimeUser,
+    loadParty,
+  ]);
+
+  const speechesLeft = Math.max(0, 2 - (user?.speeches_count || 0));
 
   // If stage is WAITING, take over the entire screen for the user
-  if (stage === "WAITING") {
+  if (session?.stage === "WAITING") {
     return <WaitingRoom />;
   }
 
@@ -427,7 +258,6 @@ export default function MemberDashboard() {
     <div className="bg-background-light font-display antialiased text-neutral-dark min-h-screen">
       {/* Global overlays */}
       <StageOverlay />
-      <PowerCardAnimation />
 
       {/* Dot pattern bg */}
       <div className="fixed inset-0 pointer-events-none z-[-1] bg-pattern" />
@@ -436,7 +266,13 @@ export default function MemberDashboard() {
 
       <div className="flex">
         {/* Desktop sidebar */}
-        <Sidebar />
+        <MemberDesktopSidebar
+          tab={tab}
+          setTab={setTab}
+          user={user}
+          partyDetails={partyDetails}
+          speechesLeft={speechesLeft}
+        />
 
         {/* Main content */}
         <main className="flex-1 flex flex-col gap-5 p-4 md:p-6 lg:p-8 max-w-md md:max-w-2xl lg:max-w-5xl mx-auto w-full pb-28 lg:pb-8">
@@ -536,145 +372,155 @@ export default function MemberDashboard() {
             )}
           </section>
 
-          {/* Stage-driven main content */}
-          {(() => {
-            const isBill1Stage = stage?.startsWith("BILL1_");
-            const isBill2Stage = stage?.startsWith("BILL2_");
-            const bill = isBill1Stage
-              ? session?.bill_1_data ||
-                billData?.bill1 ||
-                session?.bill_data?.bill1
-              : isBill2Stage
-                ? session?.bill_2_data ||
-                  billData?.bill2 ||
-                  session?.bill_data?.bill2
-                : null;
-
-            switch (stage) {
-              case "BILL1_SETUP":
-              case "BILL2_SETUP_PREP":
-                return <BillAnnouncement bill={bill} />;
-
-              case "BILL1_R2":
-              case "BILL2_R2": {
-                const selection = {
-                  teamA: oneVsOneChallenger,
-                  teamB: oneVsOneOpponent,
-                };
-                const hasChallenger = !!oneVsOneChallenger;
-                const hasOpponent = !!oneVsOneOpponent;
-
-                // ACTIVE mode — render split layout with real 180s timer
-                if (
-                  oneVsOneState === "ACTIVE" &&
-                  hasChallenger &&
-                  hasOpponent
-                ) {
-                  const total = 180;
-                  const elapsed = Math.max(0, total - oneVsOneRemaining);
-                  return (
-                    <OneVsOneLayout
-                      bill={bill}
-                      selection={selection}
-                      timer={elapsed}
-                      timerLimit={total}
+          {/* Tab content */}
+          {tab === "home" && (
+            <>
+              {is1v1 ? (
+                <div className="flex flex-col gap-6">
+                  <OneVsOneLayout
+                    oneVsOneState={oneVsOneState}
+                    teamSelections={teamSelections}
+                    stage={session?.stage}
+                    startTime={oneVsOneStartTime}
+                    onTimerEnd={resetOneVsOne}
+                  />
+                  {isBuzzerStage && oneVsOneState === "SELECTION" && (
+                    <RaiseHandButton
+                      queueEntry={myQueueEntry}
+                      onUpdate={fetchActiveSession}
                     />
-                  );
-                }
-
-                // SELECTION mode – no split layout or timer
-                return (
-                  <section className="bg-white rounded-xl p-6 shadow-soft border border-dashed border-amber-300">
-                    <div className="flex flex-col lg:flex-row items-center gap-6">
-                      <div className="flex-1 text-center lg:text-left">
-                        <p className="text-[10px] font-bold text-amber-500 uppercase tracking-[0.3em] mb-3">
-                          1v1 Debate Round
-                        </p>
-                        {!hasChallenger && !hasOpponent ? (
-                          <p className="text-sm text-gray-600 mb-4">
-                            Teams will be chosen after buzzer.
-                          </p>
-                        ) : (
-                          <p className="text-sm text-gray-600 mb-4">
-                            Teams below reflect moderator selection.
-                          </p>
-                        )}
-
-                        <div className="flex items-center justify-center lg:justify-start gap-4">
-                          <div className="min-w-[140px] p-3 bg-gray-50 rounded-lg border border-gray-100">
-                            <p className="text-[10px] text-gray-400 uppercase">
-                              Challenger
-                            </p>
-                            <p className="text-sm font-bold text-neutral-dark mt-1">
-                              {selection.teamA || "—"}
-                            </p>
-                          </div>
-
-                          <div className="text-sm font-semibold text-gray-500">
-                            vs
-                          </div>
-
-                          <div className="min-w-[140px] p-3 bg-gray-50 rounded-lg border border-gray-100">
-                            <p className="text-[10px] text-gray-400 uppercase">
-                              Opponent
-                            </p>
-                            <p className="text-sm font-bold text-neutral-dark mt-1">
-                              {selection.teamB || "—"}
-                            </p>
-                          </div>
-                        </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Action row — 2 column on desktop */}
+                  <section className="grid grid-cols-12 gap-4">
+                    {isBuzzerStage ? (
+                      <RaiseHandButton
+                        queueEntry={myQueueEntry}
+                        onUpdate={fetchActiveSession}
+                      />
+                    ) : (
+                      <div className="col-span-8 bg-gray-50 rounded-xl p-5 flex flex-col justify-center border border-dashed border-gray-200 h-32 text-center">
+                        <span className="material-symbols-outlined text-gray-300 text-3xl mb-1">lock</span>
+                        <p className="text-gray-400 font-bold text-xs uppercase tracking-widest">Floor Activity Limited</p>
+                        <p className="text-[10px] text-gray-400 mt-1">Please wait for the moderator to open the floor.</p>
                       </div>
+                    )}
+                    <button
+                      onClick={() => setTab("polls")}
+                      className="col-span-4 group relative overflow-hidden rounded-xl bg-accent text-neutral-dark p-5 flex flex-col justify-between h-32 transition-all shadow-lg shadow-accent/20 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98]"
+                    >
+                      <div className="absolute right-0 bottom-0 opacity-20 translate-x-2 translate-y-2 transition-transform group-hover:scale-110">
+                        <span className="material-symbols-outlined text-[100px]">
+                          monitoring
+                        </span>
+                      </div>
+                      <span className="material-symbols-outlined text-3xl">
+                        monitoring
+                      </span>
+                      <span className="text-sm font-black tracking-tight text-left leading-tight uppercase relative z-10">
+                        Polls
+                      </span>
+                    </button>
+                  </section>
 
-                      <div className="w-full lg:w-56">
-                        <div className="flex justify-center lg:justify-end">
-                          <RaiseHandButton
-                            queueEntry={myQueueEntry}
-                            session={session}
-                            onUpdate={fetchActiveSession}
-                          />
-                        </div>
+                  {/* My queue position banner */}
+                  {myQueueEntry && (
+                    <div className="bg-accent/10 border border-accent/30 rounded-xl p-4 flex items-center gap-3 shadow-sm transform transition-all hover:scale-[1.01] hover:shadow-md animate-in fade-in slide-in-from-top-2">
+                      <div className="h-9 w-9 rounded-full bg-accent text-neutral-dark flex items-center justify-center text-[10px] font-black ring-2 ring-white shadow-sm">
+                        YOU
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-black text-neutral-dark">
+                          You're #
+                          {queue
+                            .filter((q) => q.status === "waiting")
+                            .findIndex((q) => q.member?.id === user?.id) + 1}{" "}
+                          in queue
+                        </p>
+                        <p className="text-[10px] text-india-green font-black uppercase tracking-wide">
+                          Prepare your notes!
+                        </p>
                       </div>
                     </div>
-                  </section>
-                );
-              }
+                  )}
 
-              case "WINNER":
-                return (
-                  <section className="bg-white rounded-xl p-6 shadow-soft border border-gray-100 text-center">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.3em]">
-                      Session Locked
-                    </p>
-                    <h2 className="text-xl font-black text-neutral-dark mt-2">
-                      Winner has been declared.
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Interactions are now closed. Please follow the final
-                      proceedings on the projection screen.
-                    </p>
-                  </section>
-                );
+                  {/* Party Ranking */}
+                  {(() => {
+                    const currentLeaderboard = leaderboard || [];
+                    const sortedLeaderboard = [...currentLeaderboard].sort(
+                      (a, b) => b.points - a.points,
+                    );
+                    const myPartyRank =
+                      sortedLeaderboard.findIndex((p) => p.party === user?.party) +
+                      1;
+                    const myPartyData = sortedLeaderboard.find(
+                      (p) => p.party === user?.party,
+                    );
 
-              case "BILL1_R1":
-              case "BILL2_R1":
-              default:
-                return (
-                  <NormalDebateLayout
-                    stage={stage}
-                    bill={bill}
-                    user={user}
-                    session={session}
-                    queue={queue}
-                    myQueueEntry={myQueueEntry}
-                    leaderboard={leaderboard}
-                    powerCards={powerCards}
-                    tab={tab}
-                    setTab={setTab}
-                    fetchActiveSession={fetchActiveSession}
-                  />
-                );
-            }
-          })()}
+                    return (
+                      <section className="bg-white rounded-xl shadow-soft border border-gray-100 overflow-hidden transition-shadow hover:shadow-md mt-2">
+                        <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                          <h3 className="font-bold text-neutral-dark flex items-center gap-2 text-sm">
+                            <span className="material-symbols-outlined text-india-green">
+                              military_tech
+                            </span>
+                            Your Party Ranking
+                          </h3>
+                        </div>
+                        <div className="p-6 flex items-center justify-around text-center">
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                              Current Rank
+                            </p>
+                            <p className="text-3xl font-black text-neutral-dark mt-1">
+                              {myPartyRank > 0 ? `#${myPartyRank}` : "—"}
+                            </p>
+                          </div>
+                          <div className="h-10 w-px bg-gray-100"></div>
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                              Total Points
+                            </p>
+                            <p className="text-3xl font-black text-india-green mt-1">
+                              {myPartyData ? myPartyData.points : "—"}
+                            </p>
+                          </div>
+                        </div>
+                      </section>
+                    );
+                  })()}
+                </>
+              )}
+            </>
+          )}
+
+          {tab === "polls" && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="flex flex-col gap-4">
+                {poll ? (
+                  <PollCard poll={poll} onVoted={fetchActiveSession} />
+                ) : (
+                  <div className="bg-white rounded-xl p-8 text-center border border-dashed border-gray-200 shadow-soft hover:bg-gray-50/50 transition-colors h-full flex flex-col items-center justify-center min-h-[300px]">
+                    <span className="material-symbols-outlined text-5xl text-gray-200 block mb-3">
+                      bar_chart
+                    </span>
+                    <p className="text-gray-400 font-medium">
+                      No active poll right now.
+                    </p>
+                    <p className="text-[11px] text-gray-300 mt-1">
+                      The moderator will create one soon.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col gap-4">
+                <Leaderboard leaderboard={leaderboard || []} />
+              </div>
+            </div>
+          )}
+
         </main>
       </div>
 

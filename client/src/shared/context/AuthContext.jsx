@@ -1,8 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { login as apiLogin, getMe } from '../services/api';
 import useUserStore from '../../store/useUserStore';
-
-const AuthContext = createContext(null);
+import AuthContext from './memberAuthContext.js';
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(() => {
@@ -31,13 +30,13 @@ export function AuthProvider({ children }) {
         }
     }
 
-    function logout() {
+    const logout = useCallback(() => {
         localStorage.removeItem('abhimat_token');
         localStorage.removeItem('abhimat_user');
         setUser(null);
         // Force sync Zustand store
         useUserStore.getState().logout();
-    }
+    }, []);
 
     // Re-fetch fresh user data from server (e.g. after speeches_count changes)
     const refreshUser = useCallback(async () => {
@@ -49,12 +48,13 @@ export function AuthProvider({ children }) {
         } catch {
             logout();
         }
-    }, []);
+    }, [logout]);
 
-    // Sync fresh user info on mount
+    // Sync fresh user info when a logged-in user is restored (id-stable; avoids refetch loops)
     useEffect(() => {
-        if (user) refreshUser();
-    }, []);
+        if (!user?.id) return;
+        void refreshUser();
+    }, [user?.id, refreshUser]);
 
     return (
         <AuthContext.Provider value={{ user, loading, error, login, logout, refreshUser }}>
@@ -62,6 +62,4 @@ export function AuthProvider({ children }) {
         </AuthContext.Provider>
     );
 }
-
-export const useAuth = () => useContext(AuthContext);
 

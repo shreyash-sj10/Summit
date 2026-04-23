@@ -4,12 +4,10 @@
 -- ============================================================
 
 -- ─── STEP 1: Drop everything cleanly ───────────────────────
-drop table if exists power_cards    cascade;
 drop table if exists speaker_grades cascade;
 drop table if exists team_points    cascade;
 drop table if exists poll_votes     cascade;
 drop table if exists polls          cascade;
-drop table if exists chat_messages  cascade;
 drop table if exists speaker_queue  cascade;
 drop table if exists sessions       cascade;
 drop table if exists members        cascade;
@@ -33,6 +31,7 @@ create table members (
   role            text not null default 'member'
                   check (role in ('member', 'moderator', 'judge', 'display')),
   speeches_count  int not null default 0,
+  password_hash   text,
   created_at      timestamptz default now()
 );
 
@@ -68,20 +67,6 @@ create table speaker_queue (
   speaking_started_at  timestamptz
 );
 create index sq_session_status on speaker_queue (session_id, status);
-
--- CHAT MESSAGES
-create table chat_messages (
-  id          uuid primary key default gen_random_uuid(),
-  session_id  uuid not null references sessions(id) on delete cascade,
-  member_id   uuid not null references members(id) on delete cascade,
-  content     text not null check (char_length(content) between 1 and 500),
-  is_golden   boolean not null default false,
-  golden_by_id uuid references members(id) on delete set null,
-  created_at  timestamptz default now(),
-  golden_at   timestamptz
-);
-create index chat_session_ts on chat_messages (session_id, created_at desc);
-create index chat_golden on chat_messages (session_id, is_golden) where is_golden = true;
 
 -- POLLS
 create table polls (
@@ -128,18 +113,6 @@ create table speaker_grades (
 );
 create index grades_session_member on speaker_grades (session_id, member_id);
 
--- POWER CARDS
-create table power_cards (
-  id          uuid primary key default gen_random_uuid(),
-  session_id  uuid not null references sessions(id) on delete cascade,
-  member_id   uuid not null references members(id) on delete cascade,
-  card_type   text not null check (card_type in ('interrupt', 'add_time', 'challenge')),
-  is_used     boolean not null default false,
-  granted_at  timestamptz default now(),
-  used_at     timestamptz
-);
-create index cards_session_member on power_cards (session_id, member_id, is_used);
-
 -- PARTY DETAILS
 create table party_details (
   id             uuid primary key default gen_random_uuid(),
@@ -152,82 +125,65 @@ create table party_details (
 
 -- ─── STEP 4: Row Level Security ────────────────────────────
 -- RLS enabled but open for anon reads so Realtime works on client
--- All writes go through server (Express + service_role key)
+-- Writes are intentionally NOT granted to anon/authenticated clients.
+-- All writes go through server (Express + service_role key).
 
 alter table members        enable row level security;
 alter table sessions       enable row level security;
 alter table speaker_queue  enable row level security;
-alter table chat_messages  enable row level security;
 alter table polls          enable row level security;
 alter table poll_votes     enable row level security;
 alter table team_points    enable row level security;
 alter table speaker_grades enable row level security;
-alter table power_cards    enable row level security;
 alter table party_details  enable row level security;
 
 -- Public read policies (anon + authenticated)
 create policy "read_members"      on members        for select using (true);
 create policy "read_sessions"     on sessions       for select using (true);
 create policy "read_queue"        on speaker_queue  for select using (true);
-create policy "read_chat"         on chat_messages  for select using (true);
 create policy "read_polls"        on polls          for select using (true);
 create policy "read_poll_votes"   on poll_votes     for select using (true);
 create policy "read_team_points"  on team_points    for select using (true);
 create policy "read_speaker_grades" on speaker_grades for select using (true);
-create policy "read_power_cards"  on power_cards    for select using (true);
 create policy "read_party_details" on party_details  for select using (true);
-
--- DEV: Full write access for anon (replace with service_role in production)
-create policy "write_members"      on members        for all using (true) with check (true);
-create policy "write_sessions"     on sessions       for all using (true) with check (true);
-create policy "write_queue"        on speaker_queue  for all using (true) with check (true);
-create policy "write_chat"         on chat_messages  for all using (true) with check (true);
-create policy "write_polls"        on polls          for all using (true) with check (true);
-create policy "write_poll_votes"   on poll_votes     for all using (true) with check (true);
-create policy "write_team_points"  on team_points    for all using (true) with check (true);
-create policy "write_speaker_grades" on speaker_grades for all using (true) with check (true);
-create policy "write_power_cards"  on power_cards    for all using (true) with check (true);
-create policy "write_party_details" on party_details  for all using (true) with check (true);
 
 
 -- ─── STEP 5: Enable Realtime ───────────────────────────────
 alter publication supabase_realtime add table sessions;
 alter publication supabase_realtime add table speaker_queue;
-alter publication supabase_realtime add table chat_messages;
 alter publication supabase_realtime add table polls;
 alter publication supabase_realtime add table poll_votes;
 alter publication supabase_realtime add table team_points;
-alter publication supabase_realtime add table power_cards;
 
 -- ─── STEP 6: Seed Data ─────────────────────────────────────
 
 -- Moderator (password = "MOD", member_id = "MOD00001")
-insert into members (member_id, name, party, constituency, alignment, role) values
-  ('MOD00001', 'Chief Moderator', 'MOD', 'Central Hall', null, 'moderator');
+insert into members (member_id, name, party, constituency, alignment, role, password_hash) values
+  ('MOD00001', 'Chief Moderator', 'MOD', 'Central Hall', null, 'moderator', crypt('mod', gen_salt('bf')));
 
 -- Display Account (password = "DASH", member_id = "DASHMOD")
-insert into members (member_id, name, party, constituency, alignment, role) values
-  ('DASHMOD', 'Main Display', 'DASH', 'System', null, 'display');
+insert into members (member_id, name, party, constituency, alignment, role, password_hash) values
+  ('DASHMOD', 'Main Display', 'DASH', 'System', null, 'display', crypt('dash', gen_salt('bf')));
 
 -- Judges (password = "JDG", member_id = JDG...)
-insert into members (member_id, name, party, constituency, alignment, role) values
-  ('JDG10001', 'Judge One', 'JDG', 'Bench A', null, 'judge'),
-  ('JDG10002', 'Judge Two', 'JDG', 'Bench B', null, 'judge'),
-  ('JDG10003', 'Judge Three', 'JDG', 'Bench C', null, 'judge');
+insert into members (member_id, name, party, constituency, alignment, role, password_hash) values
+  ('JDG10001', 'Judge One', 'JDG', 'Bench A', null, 'judge', crypt('jdg', gen_salt('bf'))),
+  ('JDG10002', 'Judge Two', 'JDG', 'Bench B', null, 'judge', crypt('jdg', gen_salt('bf'))),
+  ('JDG10003', 'Judge Three', 'JDG', 'Bench C', null, 'judge', crypt('jdg', gen_salt('bf')));
 
 -- Sample members from different parties
 -- Password for each = their Party name (e.g. BJP, INC, AAP, TMC)
-insert into members (member_id, name, party, constituency, alignment, role) values
-  ('BJP10001', 'Rajesh Kumar Sharma',  'BJP', 'Varanasi',       'government', 'member'),
-  ('BJP10002', 'Priya Sharma',         'BJP', 'Gandhinagar',    'government', 'member'),
-  ('BJP10003', 'Vikram Malhotra',      'BJP', 'Lucknow',        'government', 'member'),
-  ('INC20001', 'Arjun Singh',          'INC', 'Amethi',         'opposition', 'member'),
-  ('INC20002', 'Priya Mehta',          'INC', 'Raebareli',      'opposition', 'member'),
-  ('INC20003', 'Fatima Khan',          'INC', 'Saharanpur',     'opposition', 'member'),
-  ('AAP30001', 'Rahul Verma',          'AAP', 'New Delhi East', 'opposition', 'member'),
-  ('AAP30002', 'Sunita Yadav',         'AAP', 'Chandni Chowk',  'opposition', 'member'),
-  ('TMC40001', 'Saurav Bose',          'TMC', 'Kolkata North',  'opposition', 'member'),
-  ('TMC40002', 'Ananya Chatterjee',    'TMC', 'Howrah',         'opposition', 'member');
+insert into members (member_id, name, party, constituency, alignment, role, password_hash) values
+  ('BJP10001', 'Rajesh Kumar Sharma',  'BJP', 'Varanasi',       'government', 'member', crypt('bjp', gen_salt('bf'))),
+  ('BJP10002', 'Priya Sharma',         'BJP', 'Gandhinagar',    'government', 'member', crypt('bjp', gen_salt('bf'))),
+  ('BJP10003', 'Vikram Malhotra',      'BJP', 'Lucknow',        'government', 'member', crypt('bjp', gen_salt('bf'))),
+  ('INC20001', 'Arjun Singh',          'INC', 'Amethi',         'opposition', 'member', crypt('inc', gen_salt('bf'))),
+  ('INC20002', 'Priya Mehta',          'INC', 'Raebareli',      'opposition', 'member', crypt('inc', gen_salt('bf'))),
+  ('INC20003', 'Fatima Khan',          'INC', 'Saharanpur',     'opposition', 'member', crypt('inc', gen_salt('bf'))),
+  ('AAP30001', 'Rahul Verma',          'AAP', 'New Delhi East', 'opposition', 'member', crypt('aap', gen_salt('bf'))),
+  ('AAP30002', 'Sunita Yadav',         'AAP', 'Chandni Chowk',  'opposition', 'member', crypt('aap', gen_salt('bf'))),
+  ('TMC40001', 'Saurav Bose',          'TMC', 'Kolkata North',  'opposition', 'member', crypt('tmc', gen_salt('bf'))),
+  ('TMC40002', 'Ananya Chatterjee',    'TMC', 'Howrah',         'opposition', 'member', crypt('tmc', gen_salt('bf')));
 
 -- Active session
 insert into sessions (title, is_active) values

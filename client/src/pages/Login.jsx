@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../shared/context/AuthContext';
+import { useAuth } from '../shared/context/useAuth';
 
 export default function Login() {
     const { login, loading, error } = useAuth();
@@ -19,7 +19,9 @@ export default function Login() {
             } else {
                 navigate(user.role === 'moderator' ? '/moderator' : '/member');
             }
-        } catch { }
+        } catch (e) {
+            console.error('Login failed:', e);
+        }
     }
 
     return (

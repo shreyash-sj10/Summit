@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 
 export default function TimerDisplay({ timer, timerLimit, isRunning, isFrozen }) {
     const remaining = Math.max(0, timerLimit - timer);
@@ -21,7 +21,7 @@ export default function TimerDisplay({ timer, timerLimit, isRunning, isFrozen })
     const isFlashing = remaining === 0 && isRunning;
 
     return (
-        <motion.div
+        <Motion.div
             className="relative"
             animate={isShaking ? { x: [0, -2, 2, -1, 1, 0] } : {}}
             transition={isShaking ? { duration: 0.4, repeat: Infinity, repeatDelay: 0.6 } : {}}
@@ -35,7 +35,7 @@ export default function TimerDisplay({ timer, timerLimit, isRunning, isFrozen })
                     strokeWidth="8"
                 />
                 {/* Progress arc */}
-                <motion.circle
+                <Motion.circle
                     cx="60" cy="60" r={radius}
                     fill="none"
                     stroke={strokeColor}
@@ -49,17 +49,17 @@ export default function TimerDisplay({ timer, timerLimit, isRunning, isFrozen })
 
             {/* Center text */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <motion.span
+                <Motion.span
                     className={`font-mono text-2xl font-black tabular-nums ${isFlashing ? 'text-red-500' : 'text-neutral-dark'}`}
                     animate={isFlashing ? { opacity: [1, 0.3, 1] } : {}}
                     transition={isFlashing ? { duration: 0.8, repeat: Infinity } : {}}
                 >
                     {fmt(remaining)}
-                </motion.span>
+                </Motion.span>
                 <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
                     {isFrozen ? 'Frozen' : isRunning ? 'Live' : remaining > 0 ? 'Paused' : 'Done'}
                 </span>
             </div>
-        </motion.div>
+        </Motion.div>
     );
 }

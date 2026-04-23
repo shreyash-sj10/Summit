@@ -69,7 +69,7 @@ export const STAGE_CONFIG = {
     icon: "mic",
 
     buzzerEnabled: true,
-    powercardEnabled: true,
+    powercardEnabled: false,
     scoringEnabled: true,
     timerActive: true,
     is1v1Mode: false,
@@ -84,7 +84,7 @@ export const STAGE_CONFIG = {
     speechDuration: 60, // seconds
 
     description_:
-      "Bill 1 Round 1 - Normal debate. Buzzer + power cards enabled.",
+      "Bill 1 Round 1 - Normal debate. Buzzer enabled.",
   },
 
   BILL1_R2: {
@@ -144,7 +144,7 @@ export const STAGE_CONFIG = {
     icon: "mic",
 
     buzzerEnabled: true,
-    powercardEnabled: true,
+    powercardEnabled: false,
     scoringEnabled: true,
     timerActive: true,
     is1v1Mode: false,
@@ -159,7 +159,7 @@ export const STAGE_CONFIG = {
     speechDuration: 60,
 
     description_:
-      "Bill 2 Round 1 - Normal debate. Buzzer + power cards enabled.",
+      "Bill 2 Round 1 - Normal debate. Buzzer enabled.",
   },
 
   BILL2_R2: {

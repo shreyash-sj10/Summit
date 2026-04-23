@@ -1,17 +1,24 @@
 import express from 'express';
 import { supabase } from '../supabase.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // GET /party/:party
 // Fetches the party details for a specific party
-router.get('/:party', async (req, res) => {
+router.get('/:party', authMiddleware, async (req, res) => {
     try {
         const { party } = req.params;
+        const requestedParty = String(party || '').trim().toUpperCase();
+
+        if (req.user.role !== 'moderator' && req.user.party !== requestedParty) {
+            return res.status(403).json({ error: 'Access denied for requested party' });
+        }
+
         const { data, error } = await supabase
             .from('party_details')
             .select('*')
-            .eq('party', party)
+            .eq('party', requestedParty)
             .single();
 
         if (error && error.code !== 'PGRST116') {
@@ -32,18 +39,23 @@ router.get('/:party', async (req, res) => {
 
 // POST /party
 // Creates or updates party details
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
     try {
         const { party, total_members, members_data, logo_url } = req.body;
+        const normalizedParty = String(party || '').trim().toUpperCase();
 
-        if (!party || !total_members || !members_data || !logo_url) {
+        if (!normalizedParty || !total_members || !members_data || !logo_url) {
             return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        if (req.user.role !== 'moderator' && req.user.party !== normalizedParty) {
+            return res.status(403).json({ error: 'Access denied for requested party' });
         }
 
         const { data, error } = await supabase
             .from('party_details')
             .upsert({
-                party,
+                party: normalizedParty,
                 total_members,
                 members_data,
                 logo_url

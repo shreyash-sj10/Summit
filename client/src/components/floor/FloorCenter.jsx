@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import useSessionStore from '../../store/useSessionStore';
 import TimerDisplay from './TimerDisplay';
 import { getStageBehavior } from '../../shared/utils/stageBehaviors';
@@ -60,7 +60,7 @@ export default function FloorCenter() {
                 {/* Glow background when active */}
                 <AnimatePresence>
                     {currentSpeaker && isTimerRunning && !isFrozen && (
-                        <motion.div
+                        <Motion.div
                             key="glow"
                             className="absolute inset-0 bg-gradient-to-b from-saffron/5 via-transparent to-transparent pointer-events-none"
                             initial={{ opacity: 0 }}
@@ -74,7 +74,7 @@ export default function FloorCenter() {
                 {/* Frozen overlay */}
                 <AnimatePresence>
                     {isFrozen && (
-                        <motion.div
+                        <Motion.div
                             key="frozen"
                             className="absolute inset-0 bg-neutral-dark/5 backdrop-blur-[1px] pointer-events-none z-10"
                             initial={{ opacity: 0 }}
@@ -96,7 +96,7 @@ export default function FloorCenter() {
                 {/* Speaker info with AnimatePresence */}
                 <AnimatePresence mode="wait">
                     {currentSpeaker ? (
-                        <motion.div
+                        <Motion.div
                             key={currentSpeaker.id}
                             className="flex flex-col items-center gap-2 text-center relative z-20"
                             initial={{ opacity: 0, scale: 0.92, y: 10 }}
@@ -104,13 +104,13 @@ export default function FloorCenter() {
                             exit={{ opacity: 0, scale: 0.92, y: -10 }}
                             transition={{ duration: 0.4, ease: 'easeOut' }}
                         >
-                            <motion.div
+                            <Motion.div
                                 className={`h-16 w-16 rounded-full flex items-center justify-center text-2xl font-black text-saffron shadow-md border-2 ${isFrozen ? 'border-rose-400 bg-rose-50' : 'border-saffron bg-saffron/10'}`}
                                 animate={isUrgent && !isFrozen ? { scale: [1, 1.06, 1] } : {}}
                                 transition={isUrgent ? { duration: 1, repeat: Infinity } : {}}
                             >
                                 {currentSpeaker.name?.charAt(0) || '?'}
-                            </motion.div>
+                            </Motion.div>
                             <p className="text-xl font-black text-neutral-dark leading-none">
                                 {currentSpeaker.name}
                             </p>
@@ -124,9 +124,9 @@ export default function FloorCenter() {
                                     </span>
                                 )}
                             </div>
-                        </motion.div>
+                        </Motion.div>
                     ) : (
-                        <motion.div
+                        <Motion.div
                             key="empty"
                             className="flex flex-col items-center gap-2 text-center opacity-60 relative z-20"
                             initial={{ opacity: 0 }}
@@ -139,14 +139,14 @@ export default function FloorCenter() {
                             <p className="text-sm text-gray-400 font-medium italic">
                                 No speaker on the floor
                             </p>
-                        </motion.div>
+                        </Motion.div>
                     )}
                 </AnimatePresence>
 
                 {/* Interrupt / Challenge info bar */}
                 <AnimatePresence>
                     {interruptInfo && (
-                        <motion.div
+                        <Motion.div
                             key="interrupt-bar"
                             className="w-full bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between relative z-20"
                             initial={{ opacity: 0, y: 20, height: 0 }}
@@ -164,10 +164,10 @@ export default function FloorCenter() {
                             <span className="text-xl font-black text-amber-700 tabular-nums font-mono">
                                 {String(Math.floor(interruptInfo.time_left / 60)).padStart(2, '0')}:{String(interruptInfo.time_left % 60).padStart(2, '0')}
                             </span>
-                        </motion.div>
+                        </Motion.div>
                     )}
                     {challengeInfo && (
-                        <motion.div
+                        <Motion.div
                             key="challenge-bar"
                             className="w-full bg-rose-50 border border-rose-200 rounded-lg p-3 flex items-center justify-between relative z-20"
                             initial={{ opacity: 0, y: 20, height: 0 }}
@@ -187,7 +187,7 @@ export default function FloorCenter() {
                             <span className="text-xl font-black text-rose-700 tabular-nums font-mono">
                                 {String(Math.floor(challengeInfo.time_left / 60)).padStart(2, '0')}:{String(challengeInfo.time_left % 60).padStart(2, '0')}
                             </span>
-                        </motion.div>
+                        </Motion.div>
                     )}
                 </AnimatePresence>
             </div>

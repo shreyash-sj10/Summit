@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 
 export default function Leaderboard({ leaderboard, alwaysShowAll = false }) {
@@ -27,7 +27,7 @@ export default function Leaderboard({ leaderboard, alwaysShowAll = false }) {
             <div className="flex flex-col">
                 <AnimatePresence initial={false}>
                     {displayList.map((entry, idx) => (
-                        <motion.div
+                        <Motion.div
                             key={entry.party}
                             className={`flex items-center gap-4 px-4 py-3.5 ${idx < sorted.length - 1 ? 'border-b border-gray-50' : ''} ${idx < 3 ? 'bg-gradient-to-r from-transparent to-transparent hover:from-saffron/5 hover:to-transparent' : ''} transition-colors`}
                             layout
@@ -38,13 +38,13 @@ export default function Leaderboard({ leaderboard, alwaysShowAll = false }) {
                         >
                             <div className="w-8 text-center relative">
                                 {idx === 0 && (
-                                    <motion.span
+                                    <Motion.span
                                         className="absolute -top-3 left-1/2 -translate-x-1/2 text-base"
                                         animate={{ y: [0, -2, 0] }}
                                         transition={{ duration: 2, repeat: Infinity }}
                                     >
                                         👑
-                                    </motion.span>
+                                    </Motion.span>
                                 )}
                                 <span className={`text-lg font-black ${idx === 0 ? 'text-saffron' : idx === 1 ? 'text-gray-400' : idx === 2 ? 'text-amber-600' : 'text-gray-300'}`}>
                                     {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`}
@@ -57,7 +57,7 @@ export default function Leaderboard({ leaderboard, alwaysShowAll = false }) {
                                 <p className="font-bold text-neutral-dark">{entry.party}</p>
                             </div>
                             <div className="text-right">
-                                <motion.span
+                                <Motion.span
                                     key={entry.points}
                                     className={`text-2xl font-black tabular-nums ${idx === 0 ? 'text-saffron' : 'text-neutral-dark'}`}
                                     initial={{ scale: 1.3, color: '#22c55e' }}
@@ -65,10 +65,10 @@ export default function Leaderboard({ leaderboard, alwaysShowAll = false }) {
                                     transition={{ duration: 0.5 }}
                                 >
                                     {entry.points}
-                                </motion.span>
+                                </Motion.span>
                                 <p className="text-[10px] text-gray-400 uppercase tracking-wide">pts</p>
                             </div>
-                        </motion.div>
+                        </Motion.div>
                     ))}
                 </AnimatePresence>
             </div>

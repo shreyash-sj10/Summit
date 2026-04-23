@@ -7,8 +7,12 @@ export default function PollCard({ poll, onVoted }) {
     async function handleVote(optionId) {
         if (poll.my_vote || !poll.is_active) return;
         setVoting(true);
-        try { await castVote(poll.id, optionId); onVoted?.(); }
-        catch { } finally { setVoting(false); }
+        try {
+            await castVote(poll.id, optionId);
+            onVoted?.();
+        } catch (e) {
+            console.error('Vote failed:', e);
+        } finally { setVoting(false); }
     }
 
     const totalVotes = poll.total_votes || 0;

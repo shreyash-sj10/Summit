@@ -1,5 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { supabase } from '../supabase.js';
 
 const router = express.Router();
@@ -12,20 +13,35 @@ router.post('/login', async (req, res) => {
         return res.status(400).json({ error: 'member_id and password required' });
     }
 
-    // Fetch member from DB
-    console.log('TRYING LOGIN FOR', member_id, password); const { data: member, error } = await supabase
+    const normalizedMemberId = String(member_id).trim().toUpperCase();
+    const normalizedPassword = String(password).trim().toLowerCase();
+
+    const { data: member, error } = await supabase
         .from('members')
-        .select('*')
-        .eq('member_id', member_id.toUpperCase())
+        .select('id,member_id,name,party,constituency,role,speeches_count,password_hash')
+        .eq('member_id', normalizedMemberId)
         .single();
 
-    if (error || !member) {
-        console.log('MEMBER FOUND:', member, 'ERROR:', error); return res.status(401).json({ error: 'Invalid credentials' });
+    if (error) {
+        return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Password = party name (case-insensitive)
-    const expectedPassword = member.party.toLowerCase();
-    console.log('EXPECTED:', expectedPassword, 'GOT:', password.toLowerCase()); if (password.toLowerCase() !== expectedPassword) {
+    if (!member) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const expectedLegacyPassword = String(member.party || '').trim().toLowerCase();
+
+    let ok = false;
+    if (member.password_hash) {
+        // Supabase seed uses pgcrypto `crypt(..., gen_salt('bf'))` which is bcrypt-compatible.
+        ok = await bcrypt.compare(normalizedPassword, member.password_hash);
+    } else {
+        // Back-compat for databases that haven't run the password migration yet.
+        ok = normalizedPassword === expectedLegacyPassword;
+    }
+
+    if (!ok) {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../shared/services/supabase';
-import { getMe, getPowerCards, usePowerCard as apiUsePowerCard } from '../shared/services/api';
+import { getMe } from '../shared/services/api';
 import useSessionStore from './useSessionStore';
 import useQueueStore from './useQueueStore';
 
@@ -8,7 +8,6 @@ const useUserStore = create((set, get) => ({
     user: null,
     token: localStorage.getItem('abhimat_token') || null,
     role: null,
-    powerCards: [],
     channel: null,
     error: null,
 
@@ -28,7 +27,7 @@ const useUserStore = create((set, get) => ({
     logout: () => {
         localStorage.removeItem('abhimat_token');
         localStorage.removeItem('abhimat_user');
-        set({ user: null, token: null, role: null, powerCards: [] });
+        set({ user: null, token: null, role: null });
 
         const { channel } = get();
         if (channel) {
@@ -64,24 +63,6 @@ const useUserStore = create((set, get) => ({
         set({ channel: newChannel });
     },
 
-    fetchCards: async () => {
-        try {
-            const res = await getPowerCards();
-            set({ powerCards: res.data?.cards || [] });
-        } catch (err) {
-            set({ error: err.response?.data?.error || err.message });
-        }
-    },
-
-    usePowerCard: async (cardId, targetMemberId) => {
-        try {
-            await apiUsePowerCard(cardId, targetMemberId);
-            await get().fetchCards();
-        } catch (err) {
-            set({ error: err.response?.data?.error || err.message });
-            throw err;
-        }
-    }
 }));
 
 // Initialize user correctly safely
@@ -90,7 +71,7 @@ try {
     if (storedUser) {
         useUserStore.setState({ user: storedUser, role: storedUser.role });
     }
-} catch (e) {
+} catch {
     // Ignore
 }
 
