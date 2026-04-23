@@ -18,7 +18,9 @@ function WaitingProjection({ totalTeams }) {
   const [remaining, setRemaining] = useState(WAITING_DURATION_SECONDS);
 
   useEffect(() => {
-    setRemaining(WAITING_DURATION_SECONDS);
+    const resetId = window.setTimeout(() => {
+      setRemaining(WAITING_DURATION_SECONDS);
+    }, 0);
     const id = setInterval(() => {
       setRemaining((prev) => {
         if (prev <= 1) {
@@ -29,7 +31,10 @@ function WaitingProjection({ totalTeams }) {
       });
     }, 1000);
 
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(resetId);
+      clearInterval(id);
+    };
   }, []);
 
   const safeTotal = Number.isFinite(totalTeams) ? totalTeams : 0;
