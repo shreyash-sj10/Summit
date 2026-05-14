@@ -20,6 +20,14 @@ async function resolveActiveSessionId() {
   return data?.id ?? null;
 }
 
+/** PostgREST may return one row as an object or as a one-element array. */
+function updatedRow(data) {
+  if (data == null) return null;
+  if (Array.isArray(data)) return data[0] ?? null;
+  if (typeof data === "object" && "id" in data) return data;
+  return null;
+}
+
 // GET /session/active
 router.get("/active", authMiddleware, async (req, res) => {
   try {
@@ -97,8 +105,17 @@ router.post("/bill-data", authMiddleware, async (req, res) => {
     .select("id");
 
   if (error) return res.status(500).json({ error: error.message });
-  if (!updated?.length) {
-    return res.status(404).json({ error: "Could not update bill data on the active session." });
+  const row = updatedRow(updated);
+  if (!row?.id) {
+    console.error("[session/bill-data] update returned no row", {
+      activeId,
+      col,
+      raw: updated,
+    });
+    return res.status(404).json({
+      error:
+        "Could not update bill data on the active session. If this persists, ensure columns bill_1_data and bill_2_data exist on sessions (run server/supabase_schema.sql).",
+    });
   }
 
   // Broadcast
@@ -162,8 +179,15 @@ router.post("/team-selection", authMiddleware, async (req, res) => {
     .select("id");
 
   if (error) return res.status(500).json({ error: error.message });
-  if (!updated?.length) {
-    return res.status(404).json({ error: "Could not update team selection on the active session." });
+  const row = updatedRow(updated);
+  if (!row?.id) {
+    console.error("[session/team-selection] update returned no row", {
+      activeId,
+      raw: updated,
+    });
+    return res.status(404).json({
+      error: "Could not update team selection on the active session.",
+    });
   }
 
   // Broadcast
@@ -217,14 +241,13 @@ router.post("/stage", authMiddleware, async (req, res) => {
     .select("id, stage");
 
   if (error) return res.status(500).json({ error: error.message });
-  if (!updated?.length) {
-    console.error("[session/stage] No row updated for activeId=%s", activeId);
+  const row = updatedRow(updated);
+  if (!row?.id) {
+    console.error("[session/stage] update returned no row", { activeId, raw: updated });
     return res.status(404).json({
       error: "Could not update stage on the active session.",
     });
   }
-
-  const row = updated[0];
 
   // Broadcast
   try {
