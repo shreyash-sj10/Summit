@@ -42,7 +42,7 @@ See **`DEPLOYMENT.md`** for step-by-step hosting and Docker (`summit-server` / `
 ```text
 .github/             # CI (client lint+build, server check)
 ├── client/          # Vite React app
-├── server/          # Express API + SQL
+├── server/          # Express API + SQL (see migration_*.sql, supabase_schema.sql)
 ├── PRD.md
 ├── DEPLOYMENT.md
 └── package.json     # dev, build, lint, check, verify
@@ -52,7 +52,7 @@ The checkout folder on disk may still be named `abhimat` if cloned from the orig
 
 ## Local development
 
-1. **Supabase:** create a project; run `server/supabase_schema.sql` (then other migrations as needed per `DEPLOYMENT.md`).
+1. **Supabase:** create a project. **New / reset:** run `server/supabase_schema.sql`. **Existing DB (keep data):** run `server/migration_sessions_summit_columns.sql` (adds `bill_1_data`, `bill_2_data`, `team_selections`, stage model) and `server/migration_password_rls.sql` / `server/migration_interview_scope.sql` as needed; see **Session / bill setup** below.
 2. **Server:** `cd server && cp .env.example .env` — fill `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`. Optional: `CLIENT_URL=http://localhost:5173`.
 3. **Client:** `cd client` — `.env` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=http://localhost:3001` (or rely on Vite proxy for API paths in dev).
 4. **Run API:** from repo root `npm run dev` (starts server with watch), or `cd server && npm run dev`.
@@ -93,3 +93,11 @@ If login still fails:
 4. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** — use the **service_role** secret from Supabase **Project Settings → API** (long `eyJ…` key), **not** the `anon` key.
 5. In Supabase **Table Editor → `members`**, confirm a row exists for that `member_id` and that `password_hash` is set (or leave null to use legacy “password = party name” for members only).
 6. Confirm the browser is calling your API: dev uses Vite proxy to `localhost:3001`; production needs **`VITE_API_URL`** set to the public API URL.
+
+## Session / bill setup troubleshooting
+
+If **bill save fails**, **stage stays on Waiting**, or the API mentions **`bill_1_data` / `bill_2_data`**:
+
+1. In **Supabase → SQL Editor**, run the full file **`server/migration_sessions_summit_columns.sql`** (safe to re-run). It adds the JSONB columns, `team_selections`, `current_speaker_id` if missing, fixes the **`sessions.stage`** check constraint to the 8-stage Summit model, and ensures **`sessions`** is in the **Realtime** publication.
+2. Confirm **Table Editor → `sessions`** has columns **`bill_1_data`**, **`bill_2_data`**, **`team_selections`**, **`stage`**, and exactly **one row** with **`is_active = true`**.
+3. If you prefer a clean slate instead of patching, run **`server/supabase_schema.sql`** (this **drops** session-related tables and recreates them — only when you can lose existing session data).
