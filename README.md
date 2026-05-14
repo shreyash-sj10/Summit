@@ -87,7 +87,9 @@ Use **Member ID** + **password** (passwords are compared **case-insensitively**;
 
 If login still fails:
 
-1. **Watch the API terminal** when you click login — real database/config issues log as `[auth/login] Supabase error:` and return **500** with `Unable to verify credentials` (not 401). In dev, the red banner may include a **`hint`** from Supabase (open the failed **`POST /auth/login`** in Network → Response).
-2. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** — use the **service_role** secret from Supabase **Project Settings → API** (long `eyJ…` key), **not** the `anon` key.
-3. In Supabase **Table Editor → `members`**, confirm a row exists for that `member_id` and that `password_hash` is set (or leave null to use legacy “password = party name” for members only).
-4. Confirm the browser is calling your API: dev uses Vite proxy to `localhost:3001`; production needs **`VITE_API_URL`** set to the public API URL.
+1. **Schema drift:** If the API hint mentions `password_hash` / `42703`, your Supabase `members` table predates the current app. Run **`server/supabase_schema.sql`** (full reset) or at least **`server/migration_password_rls.sql`** in **Supabase → SQL Editor**, then confirm column **`password_hash`** exists in **Table Editor**.
+2. **Diagnose from the server folder:** `npm run verify:auth` — checks connectivity, `MOD00001` row, and bcrypt for password `mod`.
+3. **Watch the API terminal** when you click login — real database/config issues log as `[auth/login] Supabase error:` and return **500** with `Unable to verify credentials` (not 401). In dev, the red banner may include a **`hint`** (open the failed **`POST /auth/login`** in Network → Response).
+4. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** — use the **service_role** secret from Supabase **Project Settings → API** (long `eyJ…` key), **not** the `anon` key.
+5. In Supabase **Table Editor → `members`**, confirm a row exists for that `member_id` and that `password_hash` is set (or leave null to use legacy “password = party name” for members only).
+6. Confirm the browser is calling your API: dev uses Vite proxy to `localhost:3001`; production needs **`VITE_API_URL`** set to the public API URL.

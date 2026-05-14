@@ -15,7 +15,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const status = err.response?.status;
+    const method = String(err.config?.method || "").toLowerCase();
+    const path = String(err.config?.url || "").replace(/\/$/, "");
+    const isFailedLogin = status === 401 && method === "post" && path.endsWith("/auth/login");
+    if (status === 401 && !isFailedLogin) {
       localStorage.removeItem(STORAGE_TOKEN_KEY);
       localStorage.removeItem(STORAGE_USER_KEY);
       window.location.href = "/";

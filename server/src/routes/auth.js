@@ -25,13 +25,21 @@ router.post('/login', async (req, res) => {
     // maybeSingle: 0 rows => data null, error null. Other failures => error set (wrong URL/key, missing table, etc.)
     if (error) {
         console.error('[auth/login] Supabase error:', error.code, error.message, error.details || '');
+        const missingColumn =
+            error.code === '42703' ||
+            (typeof error.message === 'string' && error.message.includes('password_hash'));
+        const devHint = missingColumn
+            ? `${error.message} — Run server/supabase_schema.sql (full reset) or server/migration_password_rls.sql in Supabase SQL Editor so table members has password_hash.`
+            : error.message;
         return res.status(500).json({
             error: 'Unable to verify credentials',
             code: error.code,
             hint:
                 process.env.NODE_ENV === 'production'
-                    ? 'Check server logs and SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.'
-                    : error.message,
+                    ? missingColumn
+                        ? 'Database schema is out of date (see server logs). Apply server/supabase_schema.sql or migration_password_rls.sql.'
+                        : 'Check server logs and SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.'
+                    : devHint,
         });
     }
 
