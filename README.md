@@ -17,7 +17,7 @@ Use these bullets on a resume or in interviews; they match the shipped code:
 
 | Done in repo | You still configure on the host |
 |--------------|-----------------------------------|
-| Dockerfiles for `client` and `server` | Supabase project + run `supabase_schema.sql` and migrations |
+| Dockerfiles for `client` and `server` | Supabase project + run **`server/supabase_schema.sql` once** (see file header) |
 | `GET /health` | Env: `SUPABASE_*`, `JWT_SECRET`, `CLIENT_URL` (comma-separated origins) |
 | Production client build (`npm run build`) | Client env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` |
 | CI workflow | DNS, TLS, SPA fallback to `index.html` on the CDN |
@@ -42,7 +42,7 @@ See **`DEPLOYMENT.md`** for step-by-step hosting and Docker (`summit-server` / `
 ```text
 .github/             # CI (client lint+build, server check)
 ├── client/          # Vite React app
-├── server/          # Express API + SQL (see migration_*.sql, supabase_schema.sql)
+├── server/          # Express API + SQL — **`server/supabase_schema.sql`** = full DB (run once)
 ├── PRD.md
 ├── DEPLOYMENT.md
 └── package.json     # dev, build, lint, check, verify
@@ -52,7 +52,7 @@ The checkout folder on disk may still be named `abhimat` if cloned from the orig
 
 ## Local development
 
-1. **Supabase:** create a project. **New / reset:** run `server/supabase_schema.sql`. **Existing DB (keep data):** run `server/migration_sessions_summit_columns.sql` (adds `bill_1_data`, `bill_2_data`, `team_selections`, stage model) and `server/migration_password_rls.sql` / `server/migration_interview_scope.sql` as needed; see **Session / bill setup** below.
+1. **Supabase:** create a project. In **SQL Editor**, run **`server/supabase_schema.sql` once** (full reset of Summit tables + seeds; see the banner at the top of that file). Optional: `server/migration_*.sql` only if you **cannot** drop data and need incremental patches.
 2. **Server:** `cd server && cp .env.example .env` — fill `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`. Optional: `CLIENT_URL=http://localhost:5173`.
 3. **Client:** `cd client` — `.env` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=http://localhost:3001` (or rely on Vite proxy for API paths in dev).
 4. **Run API:** from repo root `npm run dev` (starts server with watch), or `cd server && npm run dev`.
@@ -76,7 +76,7 @@ Private / team use unless you add an explicit license file.
 
 Use **Member ID** + **password** (passwords are compared **case-insensitively**; member IDs are normalized to **uppercase**).
 
-**Seeded accounts** (after running `server/supabase_schema.sql` and, if needed, `server/migration_password_rls.sql`):
+**Seeded accounts** (included when you run `server/supabase_schema.sql`):
 
 | Member ID | Password |
 |-------------|----------|
@@ -87,7 +87,7 @@ Use **Member ID** + **password** (passwords are compared **case-insensitively**;
 
 If login still fails:
 
-1. **Schema drift:** If the API hint mentions `password_hash` / `42703`, your Supabase `members` table predates the current app. Run **`server/supabase_schema.sql`** (full reset) or at least **`server/migration_password_rls.sql`** in **Supabase → SQL Editor**, then confirm column **`password_hash`** exists in **Table Editor**.
+1. **Schema drift:** If the API mentions `password_hash` / `42703` or bill/session columns are missing, run **`server/supabase_schema.sql` once** in **Supabase → SQL Editor** (this resets Summit tables and reapplies the full schema). Then confirm **`members`** and **`sessions`** in **Table Editor** match the file.
 2. **Diagnose from the server folder:** `npm run verify:auth` — checks connectivity, `MOD00001` row, and bcrypt for password `mod`.
 3. **Watch the API terminal** when you click login — real database/config issues log as `[auth/login] Supabase error:` and return **500** with `Unable to verify credentials` (not 401). In dev, the red banner may include a **`hint`** (open the failed **`POST /auth/login`** in Network → Response).
 4. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** — use the **service_role** secret from Supabase **Project Settings → API** (long `eyJ…` key), **not** the `anon` key.
@@ -96,8 +96,8 @@ If login still fails:
 
 ## Session / bill setup troubleshooting
 
-If **bill save fails**, **stage stays on Waiting**, or the API mentions **`bill_1_data` / `bill_2_data`**:
+If **bill save fails**, **stage stays on Waiting**, or columns like **`bill_1_data`** are missing:
 
-1. In **Supabase → SQL Editor**, run the full file **`server/migration_sessions_summit_columns.sql`** (safe to re-run). It adds the JSONB columns, `team_selections`, `current_speaker_id` if missing, fixes the **`sessions.stage`** check constraint to the 8-stage Summit model, and ensures **`sessions`** is in the **Realtime** publication.
-2. Confirm **Table Editor → `sessions`** has columns **`bill_1_data`**, **`bill_2_data`**, **`team_selections`**, **`stage`**, and exactly **one row** with **`is_active = true`**.
-3. If you prefer a clean slate instead of patching, run **`server/supabase_schema.sql`** (this **drops** session-related tables and recreates them — only when you can lose existing session data).
+1. Run **`server/supabase_schema.sql` once** in **Supabase → SQL Editor** (canonical full schema + seeds). This is the same fix as login/schema drift when you can reset session data.
+2. Confirm **Table Editor → `sessions`** has **`bill_1_data`**, **`bill_2_data`**, **`team_selections`**, **`stage`**, and exactly **one row** with **`is_active = true`**.
+3. **Incremental only (keep old rows):** try `server/migration_sessions_summit_columns.sql` — prefer the full schema file when possible.

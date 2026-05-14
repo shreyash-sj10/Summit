@@ -1,7 +1,8 @@
 -- ============================================================
+-- OPTIONAL incremental patch (old DBs only).
+-- For a complete, correct schema: run server/supabase_schema.sql ONCE instead.
+-- ============================================================
 -- Migration: Interview Scope Hardening (Summit)
--- - Removes deprecated chat/power-card modules
--- - Aligns sessions.stage constraint with 8-stage model
 -- ============================================================
 
 -- 1) Remove old stage constraint and apply canonical constraint

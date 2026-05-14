@@ -106,7 +106,7 @@ Tables: `members`, `sessions` (at most one `is_active`), `speaker_queue`, `polls
 
 Realtime publication includes: `sessions`, `speaker_queue`, `polls`, `poll_votes`, `team_points` (see `supabase_schema.sql`).
 
-Legacy **chat** and **power_cards** were removed in `migration_interview_scope.sql`.
+Legacy **chat** and **power_cards** tables (if any) are dropped inside `supabase_schema.sql`.
 
 ---
 

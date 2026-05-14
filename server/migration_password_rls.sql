@@ -1,8 +1,8 @@
 -- ============================================================
+-- OPTIONAL incremental patch (old DBs only).
+-- For a complete, correct schema: run server/supabase_schema.sql ONCE instead.
+-- ============================================================
 -- Migration: Password hashing + tighten RLS writes
--- Run in Supabase SQL Editor AFTER:
---   - server/migration_add_bill_data.sql
---   - server/migration_interview_scope.sql (if applicable)
 -- ============================================================
 
 create extension if not exists "pgcrypto";

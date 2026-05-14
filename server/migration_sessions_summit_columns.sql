@@ -1,9 +1,8 @@
 -- ============================================================
+-- OPTIONAL incremental patch (old DBs only — keeps existing rows).
+-- For a complete, correct schema: run server/supabase_schema.sql ONCE instead.
+-- ============================================================
 -- Migration: Summit sessions columns + stage model (NON-DESTRUCTIVE)
--- Run in Supabase → SQL Editor when:
---   - Bill setup fails / "bill_1_data" / bill save errors
---   - Stage is stuck on WAITING or old stage values
--- Safe to run multiple times (IF NOT EXISTS / DROP IF EXISTS).
 -- Requires: public.sessions and public.members already exist.
 -- ============================================================
 

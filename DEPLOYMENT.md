@@ -20,11 +20,8 @@ This repository is deployment-ready with:
    - Project URL
    - anon key
    - service role key
-3. Run SQL in order:
-   - `server/supabase_schema.sql`
-   - `server/migration_add_bill_data.sql` (for existing environments or safety alignment)
-   - `server/migration_interview_scope.sql` (for upgraded environments using prior chat/power-card schema)
-   - `server/migration_password_rls.sql` (bcrypt `password_hash` on members + drop anon write RLS policies)
+3. Run SQL: **`server/supabase_schema.sql`** once in the SQL Editor (full Summit schema + seeds).  
+   Optional **`server/migration_*.sql`** files are only for old databases where you cannot run the full reset.
 
 ## 3) Backend Deployment
 
@@ -77,7 +74,7 @@ CI runs on push/PR:
 
 ## 7) Production Checklist
 
-- [ ] Schema and migrations applied (including `migration_password_rls.sql` on existing DBs)
+- [ ] `server/supabase_schema.sql` applied once on Supabase (optional `migration_*.sql` only if not resetting)
 - [ ] CORS origins configured via `CLIENT_URL`
 - [ ] JWT secret rotated and stored securely
 - [ ] `/health` returns `200`
