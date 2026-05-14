@@ -278,11 +278,12 @@ const useSessionStore = create((set, get) => ({
       throw new Error("No active session — refresh the page or check Supabase has an active session.");
     }
     try {
-      await updateSessionStage(session.id, newStage);
+      const res = await updateSessionStage(session.id, newStage);
+      const confirmed = res.data?.stage ?? newStage;
       set((state) => ({
-        stage: newStage,
+        stage: confirmed,
         session: state.session
-          ? { ...state.session, stage: newStage }
+          ? { ...state.session, stage: confirmed }
           : null,
       }));
       await fetchActiveSession();

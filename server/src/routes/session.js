@@ -136,7 +136,8 @@ router.post("/stage", authMiddleware, async (req, res) => {
     return res.status(403).json({ error: "Moderator access required" });
   }
 
-  const { session_id, stage } = req.body;
+  const session_id = String(req.body.session_id ?? "").trim();
+  const stage = req.body.stage;
   if (!session_id || !stage) {
     return res.status(400).json({ error: "session_id and stage are required" });
   }
@@ -146,12 +147,28 @@ router.post("/stage", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "Invalid stage value" });
   }
 
-  const { error } = await supabase
+  // .select() is required: PostgREST returns no error when 0 rows match — that
+  // would leave clients stuck on WAITING while thinking the update succeeded.
+  const { data: updated, error } = await supabase
     .from("sessions")
     .update({ stage })
-    .eq("id", session_id);
+    .eq("id", session_id)
+    .eq("is_active", true)
+    .select("id, stage");
 
   if (error) return res.status(500).json({ error: error.message });
+  if (!updated?.length) {
+    console.error(
+      "[session/stage] No row updated for id=%s (wrong id or session not active)",
+      session_id,
+    );
+    return res.status(404).json({
+      error:
+        "No active session was updated. Refresh the moderator page so session id matches Supabase (Table sessions → is_active = true).",
+    });
+  }
+
+  const row = updated[0];
 
   // Broadcast
   try {
@@ -159,13 +176,13 @@ router.post("/stage", authMiddleware, async (req, res) => {
     await supabase.channel("global-session-channel").send({
       type: "broadcast",
       event: "stage:update",
-      payload: { sessionId: session_id, stage },
+      payload: { sessionId: row.id, stage: row.stage },
     });
   } catch (err) {
     console.error("Failed to broadcast stage update:", err);
   }
 
-  res.json({ success: true, stage });
+  res.json({ success: true, stage: row.stage, session_id: row.id });
 });
 
 // GET /session/raise-hand/status
