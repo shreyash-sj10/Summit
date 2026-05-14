@@ -155,7 +155,8 @@ router.post("/stage", authMiddleware, async (req, res) => {
 
   // Broadcast
   try {
-    await supabase.channel("stage-updates").send({
+    // Must match client subscription in useSessionStore (global-session-channel).
+    await supabase.channel("global-session-channel").send({
       type: "broadcast",
       event: "stage:update",
       payload: { sessionId: session_id, stage },

@@ -261,15 +261,17 @@ const useSessionStore = create((set, get) => ({
   },
 
   updateStage: async (newStage) => {
-    const { session } = get();
+    const { session, fetchActiveSession } = get();
     if (!session) return;
     try {
-      // Call the API to update stage on server
       await updateSessionStage(session.id, newStage);
-      // DO NOT update local state here - wait for socket 'stage:update' broadcast
-      // The server will broadcast the stage change to all clients
-    } catch {
+      // Reload session from API so UI updates even if Realtime broadcast/postgres
+      // events are misconfigured (previously we only listened for a broadcast on
+      // the wrong channel name as the server).
+      await fetchActiveSession();
+    } catch (e) {
       set({ error: "Failed to update stage" });
+      throw e;
     }
   },
 

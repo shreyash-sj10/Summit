@@ -131,38 +131,47 @@ export default function ModeratorDashboard() {
 
   // Handle stage changes with modal logic
   const handleStageChange = async (newStage) => {
-    // Determine if this stage requires bill setup or team selection
-    const requiresBillSetup = ["BILL1_SETUP", "BILL2_SETUP_PREP"].includes(
-      newStage,
-    );
-    const requiresTeamSelection = ["BILL1_R2", "BILL2_R2"].includes(newStage);
+    try {
+      // Determine if this stage requires bill setup or team selection
+      const requiresBillSetup = ["BILL1_SETUP", "BILL2_SETUP_PREP"].includes(
+        newStage,
+      );
+      const requiresTeamSelection = ["BILL1_R2", "BILL2_R2"].includes(newStage);
 
-    if (requiresBillSetup) {
-      // Check if bill data already exists
-      const billNumber = newStage === "BILL1_SETUP" ? 1 : 2;
-      const billDataExists =
-        billNumber === 1
-          ? billData.bill1.name && billData.bill1.summary
-          : billData.bill2.name && billData.bill2.summary;
+      if (requiresBillSetup) {
+        // Check if bill data already exists
+        const billNumber = newStage === "BILL1_SETUP" ? 1 : 2;
+        const billDataExists =
+          billNumber === 1
+            ? billData.bill1.name && billData.bill1.summary
+            : billData.bill2.name && billData.bill2.summary;
 
-      if (!billDataExists) {
-        // Show bill setup modal
-        setBillSetupInProgress({ billNumber, stage: newStage });
-        setShowBillSetupModal(true);
+        if (!billDataExists) {
+          // Show bill setup modal
+          setBillSetupInProgress({ billNumber, stage: newStage });
+          setShowBillSetupModal(true);
+          return; // Don't change stage yet
+        }
+      }
+
+      if (requiresTeamSelection) {
+        // Show team selection modal
+        const billNumber = newStage === "BILL1_R2" ? 1 : 2;
+        setTeamSelectionInProgress({ billNumber, stage: newStage });
+        setShowTeamSelectionModal(true);
         return; // Don't change stage yet
       }
-    }
 
-    if (requiresTeamSelection) {
-      // Show team selection modal
-      const billNumber = newStage === "BILL1_R2" ? 1 : 2;
-      setTeamSelectionInProgress({ billNumber, stage: newStage });
-      setShowTeamSelectionModal(true);
-      return; // Don't change stage yet
+      // Otherwise, proceed normally
+      await updateStage(newStage);
+    } catch (err) {
+      console.error("Stage change failed:", err);
+      alert(
+        err?.response?.data?.error ||
+          err?.message ||
+          "Could not update stage. Check network and moderator permissions.",
+      );
     }
-
-    // Otherwise, proceed normally
-    await updateStage(newStage);
   };
 
   // Handle bill setup modal submit
@@ -195,7 +204,11 @@ export default function ModeratorDashboard() {
       setBillSetupInProgress(null);
     } catch (error) {
       console.error("Failed to setup bill:", error);
-      alert("Failed to setup bill. Please try again.");
+      alert(
+        error?.response?.data?.error ||
+          error?.message ||
+          "Failed to save bill or advance stage. Try again.",
+      );
     } finally {
       setIsModalLoading(false);
     }
