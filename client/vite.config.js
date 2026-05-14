@@ -45,7 +45,8 @@ export default defineConfig({
       '/speaker': 'http://localhost:3001',
       '/polls': 'http://localhost:3001',
       '/points': 'http://localhost:3001',
-      '/moderator': 'http://localhost:3001',
+      // Do NOT proxy "/moderator" — it is a React Router path. API calls use
+      // baseURL http://localhost:3001 and hit /moderator/grade/* etc. directly.
       '/party': 'http://localhost:3001',
     },
   },
