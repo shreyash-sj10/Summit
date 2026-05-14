@@ -28,6 +28,15 @@ function updatedRow(data) {
   return null;
 }
 
+/** PostgREST can omit rows in the UPDATE response; confirm persistence with SELECT. */
+function billPayloadMatches(stored, name, summary) {
+  if (!stored || typeof stored !== "object") return false;
+  return (
+    String(stored.name ?? "").trim() === String(name ?? "").trim() &&
+    String(stored.summary ?? "").trim() === String(summary ?? "").trim()
+  );
+}
+
 // GET /session/active
 router.get("/active", authMiddleware, async (req, res) => {
   try {
@@ -104,18 +113,48 @@ router.post("/bill-data", authMiddleware, async (req, res) => {
     .eq("id", activeId)
     .select("id");
 
-  if (error) return res.status(500).json({ error: error.message });
-  const row = updatedRow(updated);
+  if (error) {
+    const hint =
+      String(error.message || "").includes("bill_") || error.code === "42703"
+        ? "Run server/supabase_schema.sql in THIS Supabase project (same URL as server/.env SUPABASE_URL)."
+        : undefined;
+    return res.status(500).json({ error: error.message, code: error.code, hint });
+  }
+
+  let row = updatedRow(updated);
   if (!row?.id) {
-    console.error("[session/bill-data] update returned no row", {
-      activeId,
-      col,
-      raw: updated,
-    });
-    return res.status(404).json({
-      error:
-        "Could not update bill data on the active session. If this persists, ensure columns bill_1_data and bill_2_data exist on sessions (run server/supabase_schema.sql).",
-    });
+    const { data: snap, error: snapErr } = await supabase
+      .from("sessions")
+      .select(`id, ${col}`)
+      .eq("id", activeId)
+      .single();
+
+    if (snapErr) {
+      const hint =
+        String(snapErr.message || "").includes("bill_") || snapErr.code === "42703"
+          ? "Your sessions table is missing bill JSON columns. Run server/supabase_schema.sql once in Supabase SQL Editor."
+          : undefined;
+      return res.status(500).json({
+        error: snapErr.message,
+        code: snapErr.code,
+        hint,
+      });
+    }
+
+    if (snap?.id && billPayloadMatches(snap[col], bill_name, bill_summary)) {
+      row = { id: snap.id };
+    } else {
+      console.error("[session/bill-data] update not reflected after SELECT", {
+        activeId,
+        col,
+        rawUpdate: updated,
+        snap,
+      });
+      return res.status(409).json({
+        error:
+          "Bill data was not saved. In Supabase: run server/supabase_schema.sql (full schema), confirm this API uses the same project as in server/.env, and that one session row has is_active = true.",
+      });
+    }
   }
 
   // Broadcast
