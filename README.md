@@ -87,7 +87,7 @@ Use **Member ID** + **password** (passwords are compared **case-insensitively**;
 
 If login still fails:
 
-1. **Watch the API terminal** when you click login — real database/config issues log as `[auth/login] Supabase error:` and return **500** with `Unable to verify credentials` (not 401).
-2. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** (service role, not anon).
+1. **Watch the API terminal** when you click login — real database/config issues log as `[auth/login] Supabase error:` and return **500** with `Unable to verify credentials` (not 401). In dev, the red banner may include a **`hint`** from Supabase (open the failed **`POST /auth/login`** in Network → Response).
+2. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** — use the **service_role** secret from Supabase **Project Settings → API** (long `eyJ…` key), **not** the `anon` key.
 3. In Supabase **Table Editor → `members`**, confirm a row exists for that `member_id` and that `password_hash` is set (or leave null to use legacy “password = party name” for members only).
 4. Confirm the browser is calling your API: dev uses Vite proxy to `localhost:3001`; production needs **`VITE_API_URL`** set to the public API URL.

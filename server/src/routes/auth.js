@@ -22,10 +22,17 @@ router.post('/login', async (req, res) => {
         .eq('member_id', normalizedMemberId)
         .maybeSingle();
 
-    // maybeSingle: no row => member null, error null (avoids treating "no rows" as a DB failure)
+    // maybeSingle: 0 rows => data null, error null. Other failures => error set (wrong URL/key, missing table, etc.)
     if (error) {
-        console.error('[auth/login] Supabase error:', error.code, error.message);
-        return res.status(500).json({ error: 'Unable to verify credentials' });
+        console.error('[auth/login] Supabase error:', error.code, error.message, error.details || '');
+        return res.status(500).json({
+            error: 'Unable to verify credentials',
+            code: error.code,
+            hint:
+                process.env.NODE_ENV === 'production'
+                    ? 'Check server logs and SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.'
+                    : error.message,
+        });
     }
 
     if (!member) {
@@ -47,19 +54,30 @@ router.post('/login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign(
-        {
-            id: member.id,
-            member_id: member.member_id,
-            name: member.name,
-            party: member.party,
-            constituency: member.constituency,
-            role: member.role,
-            speeches_count: member.speeches_count,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: '12h' }
-    );
+    if (!process.env.JWT_SECRET) {
+        console.error('[auth/login] JWT_SECRET is not set');
+        return res.status(500).json({ error: 'Server misconfiguration' });
+    }
+
+    let token;
+    try {
+        token = jwt.sign(
+            {
+                id: member.id,
+                member_id: member.member_id,
+                name: member.name,
+                party: member.party,
+                constituency: member.constituency,
+                role: member.role,
+                speeches_count: member.speeches_count,
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '12h' },
+        );
+    } catch (e) {
+        console.error('[auth/login] JWT sign failed:', e);
+        return res.status(500).json({ error: 'Server misconfiguration' });
+    }
 
     res.json({
         token,

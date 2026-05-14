@@ -23,7 +23,11 @@ export function AuthProvider({ children }) {
             useUserStore.getState().setUser(data.user, data.token);
             return data.user;
         } catch (err) {
-            const msg = err.response?.data?.error || 'Login failed';
+            const d = err.response?.data;
+            const msg =
+                d?.hint
+                    ? `${d.error}${d.code ? ` [${d.code}]` : ''}: ${d.hint}`
+                    : d?.error || err.message || 'Login failed';
             setError(msg);
             throw new Error(msg);
         } finally {
