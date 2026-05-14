@@ -7,6 +7,7 @@ import {
   getActivePoll,
   getLeaderboard,
 } from "../shared/services/api";
+import { getSpeechDuration } from "../shared/utils/stageBehaviors";
 
 const useSessionStore = create((set, get) => ({
   session: null,
@@ -135,21 +136,39 @@ const useSessionStore = create((set, get) => ({
         }
       }
 
+      const b1 = sess?.bill_1_data;
+      const b2 = sess?.bill_2_data;
+      const speechSeconds = getSpeechDuration(stageVal);
+      const floorStartedAt = sess?.current_speaker_started_at ?? null;
+
       set({
         session: sess,
         stage: stageVal,
+        activeSpeaker: activeSpk ?? null,
         teamSelections,
         oneVsOneState,
         oneVsOneStartTime,
+        billData: {
+          bill1: {
+            name: b1?.name ?? null,
+            summary: b1?.summary ?? null,
+          },
+          bill2: {
+            name: b2?.name ?? null,
+            summary: b2?.summary ?? null,
+          },
+        },
         poll: pollRes.data.poll,
         leaderboard: leadRes.data.leaderboard || [],
+        ...(activeSpk ? { timerLimit: speechSeconds } : {}),
       });
 
-      // Reconstruct timer if someone is speaking
       if (!activeSpk) {
         get().resetTimer();
+      } else if (floorStartedAt) {
+        get().syncTimerWithStartedAt(floorStartedAt);
       } else if (!get().isTimerRunning && !get().intervalId) {
-        get().startTimer(get().timerLimit || 60, get().timer || 0);
+        get().startTimer(speechSeconds, 0);
       }
     } catch (err) {
       set({
@@ -168,11 +187,15 @@ const useSessionStore = create((set, get) => ({
     const elapsed = Math.floor(
       (Date.now() - new Date(startedAt).getTime()) / 1000,
     );
-    set({ timer: Math.max(0, elapsed), currentSpeakerStartedAt: startedAt });
-
-    if (!state.isTimerRunning && !state.intervalId) {
-      state.startTimer(state.timerLimit, Math.max(0, elapsed));
-    }
+    const limit = state.timerLimit || 60;
+    if (state.intervalId) clearInterval(state.intervalId);
+    set({
+      timer: Math.max(0, elapsed),
+      currentSpeakerStartedAt: startedAt,
+      intervalId: null,
+      isTimerRunning: false,
+    });
+    get().startTimer(limit, Math.max(0, elapsed));
   },
 
   initRealtimeSession: () => {

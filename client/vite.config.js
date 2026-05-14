@@ -45,6 +45,8 @@ export default defineConfig({
       '/speaker': 'http://localhost:3001',
       '/polls': 'http://localhost:3001',
       '/points': 'http://localhost:3001',
+      '/moderator': 'http://localhost:3001',
+      '/party': 'http://localhost:3001',
     },
   },
 });

@@ -18,12 +18,19 @@ export const saveBillData = (
     bill_summary,
   });
 
-export const saveTeamSelection = (session_id, bill_number, team_a, team_b) =>
+export const saveTeamSelection = (
+  session_id,
+  bill_number,
+  team_a,
+  team_b,
+  startTime,
+) =>
   api.post("/session/team-selection", {
     session_id,
     bill_number,
     team_a,
     team_b,
+    ...(startTime != null ? { startTime } : {}),
   });
 
 export const getRaiseHandStatus = () => api.get("/session/raise-hand/status");

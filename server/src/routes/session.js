@@ -12,7 +12,7 @@ router.get("/active", authMiddleware, async (req, res) => {
     const { data, error } = await supabase
       .from("sessions")
       .select(
-        "id, title, is_active, stage, team_selections, bill_1_data, bill_2_data, created_at, current_speaker:members!sessions_current_speaker_id_fkey(id, name, party, constituency)",
+        "id, title, is_active, stage, current_speaker_id, team_selections, bill_1_data, bill_2_data, created_at, current_speaker:members!sessions_current_speaker_id_fkey(id, name, party, constituency)",
       )
       .eq("is_active", true)
       .single();
@@ -21,7 +21,29 @@ router.get("/active", authMiddleware, async (req, res) => {
       console.error("Session fetch error:", error);
       return res.status(500).json({ error: error.message });
     }
-    res.json({ session: data || null });
+
+    let session = data || null;
+    if (session?.current_speaker_id && session?.id) {
+      const { data: turn, error: turnErr } = await supabase
+        .from("speaker_queue")
+        .select("speaking_started_at")
+        .eq("session_id", session.id)
+        .eq("member_id", session.current_speaker_id)
+        .eq("status", "speaking")
+        .maybeSingle();
+
+      if (turnErr) {
+        console.error("Session active speaker_queue fetch:", turnErr);
+      }
+      session = {
+        ...session,
+        current_speaker_started_at: turn?.speaking_started_at ?? null,
+      };
+    } else if (session) {
+      session = { ...session, current_speaker_started_at: null };
+    }
+
+    res.json({ session });
   } catch (err) {
     console.error("Session fetch exception:", err);
     res.status(500).json({ error: err.message });
