@@ -1,147 +1,70 @@
-# ABHIMAT
+# Summit
 
-Real-time, multi-role deliberation platform for moderated speaking sessions.  
-Built for interview-grade system design demonstrations: queue orchestration, stage governance, polling, and official scoring.
+**Summit** is a real-time, multi-role parliamentary session platform: moderated speaking queues, stage-driven debate flow, polls, multi-official scoring, and a dedicated projection view for the hall.
 
-## What This System Does
+## Resume-ready (SDE) — what to claim
 
-- Runs synchronized live sessions for `member`, `moderator`, `judge`, and `display` roles
-- Enforces moderator-controlled speaking windows and queue transitions
-- Supports stage-driven flow with an 8-stage lifecycle
-- Aggregates multi-official grading and updates team leaderboard
-- Streams session state across clients via Supabase Realtime
+Use these bullets on a resume or in interviews; they match the shipped code:
 
-Active scope intentionally excludes chat and power-card modules.
+- Full-stack **React 19 + Vite** SPA with **Zustand**, **Tailwind**, **PWA**, role-based routing (`member`, `moderator`, `judge`, `display`).
+- **Express 5** REST API with **JWT** auth, **Helmet**, **CORS**, **rate limiting** (including tighter limits on hand-raise).
+- **Supabase Postgres** as source of truth; **RLS** for read; **service role** on server for writes; **Realtime** for `sessions`, queue, polls, votes, team points.
+- **Concurrency-sensitive floor**: 5s raise-hand window, server-side validation, queue priority by `speeches_count` and timestamp.
+- **8-stage lifecycle** (waiting → two bills × two rounds including 1v1 → winner); bill JSON, team selections, `current_speaker_started_at` on active session for hall timer sync.
+- **CI** (GitHub Actions): client lint + build; server syntax check.
 
-## Architecture Summary
+## Deployment-ready — what is done vs. left to you
 
-- **Client (React + Zustand):** role dashboards, local state, realtime subscriptions
-- **API (Express):** auth, stage governance, queue control, grading, polling
-- **Data (Supabase Postgres):** normalized relational schema + constraints + realtime publication
-- **Server authority:** moderator actions mutate canonical state; clients react through API responses + broadcasts
+| Done in repo | You still configure on the host |
+|--------------|-----------------------------------|
+| Dockerfiles for `client` and `server` | Supabase project + run `supabase_schema.sql` and migrations |
+| `GET /health` | Env: `SUPABASE_*`, `JWT_SECRET`, `CLIENT_URL` (comma-separated origins) |
+| Production client build (`npm run build`) | Client env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` |
+| CI workflow | DNS, TLS, SPA fallback to `index.html` on the CDN |
+| CORS allows `http://localhost:5173` + `CLIENT_URL` | Optional: hardening, monitoring, backups |
 
-## Tech Stack
+See **`DEPLOYMENT.md`** for step-by-step hosting and Docker (`summit-server` / `summit-client` image names).
 
-- **Frontend:** React 19, Vite, React Router, Zustand, Tailwind CSS, Supabase JS
-- **Backend:** Node.js, Express 5, JWT auth, Helmet, CORS, express-rate-limit
-- **Data:** Supabase PostgreSQL + Realtime
-- **Ops:** GitHub Actions CI, Docker support for client/server
+## Product documentation
 
-## Repository Layout
+- **`PRD.md`** — product requirements aligned with the current locked implementation (Summit branding).
+
+## Tech stack
+
+| Layer | Stack |
+|-------|--------|
+| UI | React 19, Vite 7, React Router 7, Tailwind 4, Framer Motion, Zustand, Axios, vite-plugin-pwa |
+| API | Node.js, Express 5, jsonwebtoken, bcryptjs, @supabase/supabase-js (service role) |
+| Data | Supabase PostgreSQL + Realtime |
+
+## Repository layout
 
 ```text
-abhimat/
-├── client/
-│   ├── src/
-│   │   ├── member/
-│   │   ├── moderator/
-│   │   ├── display/
-│   │   ├── store/
-│   │   └── shared/services/api/
-│   ├── Dockerfile
-│   └── nginx.conf
-├── server/
-│   ├── src/
-│   │   ├── app.js
-│   │   ├── index.js
-│   │   ├── config/
-│   │   ├── middleware/
-│   │   ├── routes/
-│   │   └── state/
-│   ├── Dockerfile
-│   ├── supabase_schema.sql
-│   └── migration_interview_scope.sql
+├── client/          # Vite React app (member, moderator, projection)
+├── server/          # Express API + SQL migrations
+├── PRD.md
 ├── DEPLOYMENT.md
-├── INTERVIEW_SCOPE.md
-└── PROJECT_STRUCTURE.md
+└── package.json     # root scripts: npm run dev | start → server
 ```
 
-## Role Model
+The checkout folder on disk may still be named `abhimat` if cloned from the original remote; the **product name in the app and docs is Summit**.
 
-- **Member:** raise/lower hand, participate in polls, view queue/session status
-- **Moderator:** control stage, buzzer access, speaker lifecycle, polls
-- **Judge:** submit official speech grading only
-- **Display:** projection-only dashboard for live room display
+## Local development
 
-## Core Flow
+1. **Supabase:** create a project; run `server/supabase_schema.sql` (then other migrations as needed per `DEPLOYMENT.md`).
+2. **Server:** `cd server && cp .env.example .env` — fill `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`. Optional: `CLIENT_URL=http://localhost:5173`.
+3. **Client:** `cd client` — `.env` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=http://localhost:3001` (or rely on Vite proxy for API paths in dev).
+4. **Run API:** from repo root `npm run dev` (starts server with watch), or `cd server && npm run dev`.
+5. **Run UI:** `cd client && npm run dev` (Vite proxies `/auth`, `/session`, `/hand`, `/queue`, `/speaker`, `/polls`, `/points`, `/moderator`, `/party` to `:3001`).
 
-1. User authenticates (`/auth/login`)
-2. Moderator controls stage and opens raise-hand window
-3. Members join queue through constrained buzzer window
-4. Moderator approves, revokes, or completes speaker turns
-5. Officials grade active turn; final score updates team leaderboard
-6. Polls run in parallel with role-restricted controls
+## API surface (summary)
 
-## API Surface (Current)
+- **Auth:** `POST /auth/login`, `GET /auth/me`
+- **Session:** `GET /session/active` (includes `current_speaker_started_at` when someone is on the floor), `POST /session/stage`, `POST /session/bill-data`, `POST /session/team-selection`, raise-hand status and toggle
+- **Queue / hand:** `GET /queue`, `POST /hand/raise`, `DELETE /hand/lower`
+- **Speaker:** approve, revoke, done
+- **Polls / points / moderator grading / party:** see `server/src/routes/`
 
-- **Auth:** `/auth/login`, `/auth/me`
-- **Session:** `/session/active`, `/session/stage`, `/session/bill-data`, `/session/team-selection`, `/session/raise-hand/*`
-- **Queue/Hand:** `/queue`, `/hand/raise`, `/hand/lower`
-- **Speaker:** `/speaker/approve/:queueId`, `/speaker/revoke`, `/speaker/done`
-- **Polling:** `/polls`, `/polls/active`, `/polls/:id/vote`, `/polls/:id/close`
-- **Scoring:** `/moderator/grade/status`, `/moderator/grade`
-- **Leaderboard:** `/points`
-- **Party:** `/party/:party`, `/party`
-- **Health:** `/health`
+## License
 
-## Local Development
-
-### 1) Configure Environment
-
-Create env files from examples:
-- `server/.env.example`
-- `client/.env.example`
-
-### 2) Install Dependencies
-
-```bash
-cd server && npm install
-cd ../client && npm install
-```
-
-### 3) Initialize Database
-
-Fresh environment:
-1. `server/supabase_schema.sql`
-
-Existing/older environment upgrade path:
-1. `server/migration_add_bill_data.sql`
-2. `server/migration_interview_scope.sql`
-
-### 4) Run Services
-
-```bash
-# terminal 1
-cd server && npm run dev
-
-# terminal 2
-cd client && npm run dev
-```
-
-## Build and Checks
-
-```bash
-cd client && npm run build
-cd ../server && npm run check
-```
-
-## Deployment
-
-Use `DEPLOYMENT.md` for production setup (Supabase + backend + frontend + Docker options).
-
-## CI
-
-CI workflow: `.github/workflows/ci.yml`
-- Client: install + production build
-- Server: install + syntax checks
-
-## Security Notes
-
-- Auth is role-based with JWT middleware on all protected routes.
-- Party endpoints are auth-protected and party-scoped (moderator override).
-- Current credential model uses event-style static secrets (party/codes). Replace with hashed passwords + reset flow for internet-facing production use.
-
-## Operational Notes
-
-- Raise-hand window/access state is currently in-memory on the API instance.
-- For multi-instance horizontal scaling, move this state to a shared store (Redis or DB-backed lock/state table).
+Private / team use unless you add an explicit license file.

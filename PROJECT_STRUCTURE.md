@@ -1,6 +1,6 @@
 # Project Structure (Interview Scope)
 
-ABHIMAT is organized as a two-tier system:
+Summit is organized as a two-tier system:
 
 - `client/` - React application (role-based dashboards + realtime-aware state)
 - `server/` - Express API (session governance, queue orchestration, grading, polling)

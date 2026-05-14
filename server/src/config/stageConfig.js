@@ -1,5 +1,5 @@
 /**
- * Centralized Stage Configuration for ABHIMAT '26
+ * Centralized Stage Configuration for Summit
  *
  * This module defines the complete stage lifecycle and behavior for all 8 stages:
  * 1. WAITING - Members wait, no interaction

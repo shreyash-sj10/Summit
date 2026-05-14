@@ -35,7 +35,7 @@ export default function WaitingRoom() {
                     <div className="absolute inset-0 bg-saffron/20 blur-2xl rounded-full mix-blend-multiply" />
                     <img
                         src="/logo.png"
-                        alt="Abhimat Logo"
+                        alt="Summit"
                         className="w-full h-full object-contain relative z-10 drop-shadow-lg"
                         onError={(e) => {
                             e.target.style.display = 'none';
@@ -49,7 +49,7 @@ export default function WaitingRoom() {
                 </div>
 
                 <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-4 text-neutral-dark">
-                    ABHIMAT
+                    Summit
                 </h1>
 
                 <div className="h-1 w-24 bg-saffron mx-auto rounded-full mb-6" />

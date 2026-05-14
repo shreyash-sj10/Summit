@@ -3,10 +3,11 @@ import { supabase } from '../shared/services/supabase';
 import { getMe } from '../shared/services/api';
 import useSessionStore from './useSessionStore';
 import useQueueStore from './useQueueStore';
+import { STORAGE_TOKEN_KEY, STORAGE_USER_KEY } from '../shared/constants.js';
 
 const useUserStore = create((set, get) => ({
     user: null,
-    token: localStorage.getItem('abhimat_token') || null,
+    token: localStorage.getItem(STORAGE_TOKEN_KEY) || null,
     role: null,
     channel: null,
     error: null,
@@ -16,17 +17,17 @@ const useUserStore = create((set, get) => ({
 
     setUser: (user, token) => {
         if (token) {
-            localStorage.setItem('abhimat_token', token);
+            localStorage.setItem(STORAGE_TOKEN_KEY, token);
         }
         if (user) {
-            localStorage.setItem('abhimat_user', JSON.stringify(user));
+            localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(user));
             set({ user, token: token || get().token, role: user.role });
         }
     },
 
     logout: () => {
-        localStorage.removeItem('abhimat_token');
-        localStorage.removeItem('abhimat_user');
+        localStorage.removeItem(STORAGE_TOKEN_KEY);
+        localStorage.removeItem(STORAGE_USER_KEY);
         set({ user: null, token: null, role: null });
 
         const { channel } = get();
@@ -67,7 +68,7 @@ const useUserStore = create((set, get) => ({
 
 // Initialize user correctly safely
 try {
-    const storedUser = JSON.parse(localStorage.getItem('abhimat_user'));
+    const storedUser = JSON.parse(localStorage.getItem(STORAGE_USER_KEY));
     if (storedUser) {
         useUserStore.setState({ user: storedUser, role: storedUser.role });
     }

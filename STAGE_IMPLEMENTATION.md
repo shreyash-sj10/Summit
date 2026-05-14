@@ -1,4 +1,4 @@
-# ABHIMAT '26 – Centralized Stage Configuration Implementation
+# Summit '26 – Centralized Stage Configuration Implementation
 
 ## 📋 Overview
 
@@ -124,7 +124,7 @@ Judge grading is now **stage-aware**:
 - **Grading enabled in:** `BILL1_R1`, `BILL1_R2`, `BILL2_R1`, `BILL2_R2`
 - **Shows helpful message** when grading is unavailable
 
-**Updated component:** [SpeakerGrader.jsx](d:\Projects\AAbhimat\abhimat\client\src\moderator\components\SpeakerGrader.jsx)
+**Updated component:** [SpeakerGrader.jsx](client/src/moderator/components/SpeakerGrader.jsx)
 
 Uses utility: `isGradingAllowed(stage)` from `stageBehaviors.js`
 

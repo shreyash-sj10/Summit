@@ -1,4 +1,4 @@
-# 🚀 Quick Start Guide - ABHIMAT Stage System
+# 🚀 Quick Start Guide - Summit Stage System
 
 **Read this first if you need to get up to speed quickly!**
 
@@ -6,7 +6,7 @@
 
 ## ⚡ 60-Second Overview
 
-A new **8-stage system** has been implemented for ABHIMAT '26:
+A new **8-stage system** has been implemented for Summit '26:
 
 ```
 WAITING → BILL1_SETUP → BILL1_R1 → BILL1_R2 → BILL2_SETUP_PREP → BILL2_R1 → BILL2_R2 → WINNER

@@ -1,6 +1,6 @@
-# 📖 ABHIMAT Stage System - Documentation Index
+# 📖 Summit Stage System - Documentation Index
 
-Welcome! This folder contains the complete implementation of the **8-Stage Governance System** for ABHIMAT '26.
+Welcome! This folder contains the complete implementation of the **8-Stage Governance System** for Summit '26.
 
 ---
 
@@ -76,7 +76,7 @@ Welcome! This folder contains the complete implementation of the **8-Stage Gover
 ## 🗂️ File Structure
 
 ```
-abhimat/
+repo/
 ├── README.md (existing)
 ├── DEPLOYMENT.md (existing)
 │
@@ -308,7 +308,7 @@ If you've checked all boxes → You're ready to deploy! 🚀
 
 ## 📝 Version Info
 
-- **System:** ABHIMAT Stage System v1.0
+- **System:** Summit Stage System v1.0
 - **Date:** February 25, 2026
 - **Status:** ✅ Production Ready
 - **Last Updated:** February 25, 2026

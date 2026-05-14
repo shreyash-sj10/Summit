@@ -59,14 +59,14 @@ For SPA routing, keep redirect fallback to `index.html`.
 
 Backend:
 ```bash
-docker build -t abhimat-server ./server
-docker run --env-file ./server/.env -p 3001:3001 abhimat-server
+docker build -t summit-server ./server
+docker run --env-file ./server/.env -p 3001:3001 summit-server
 ```
 
 Frontend:
 ```bash
-docker build -t abhimat-client ./client
-docker run -p 8080:80 abhimat-client
+docker build -t summit-client ./client
+docker run -p 8080:80 summit-client
 ```
 
 ## 6) CI Gate

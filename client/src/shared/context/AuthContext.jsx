@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { login as apiLogin, getMe } from '../services/api';
 import useUserStore from '../../store/useUserStore';
 import AuthContext from './memberAuthContext.js';
+import { STORAGE_TOKEN_KEY, STORAGE_USER_KEY } from '../constants.js';
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('abhimat_user')); } catch { return null; }
+        try { return JSON.parse(localStorage.getItem(STORAGE_USER_KEY)); } catch { return null; }
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -15,8 +16,8 @@ export function AuthProvider({ children }) {
         setError(null);
         try {
             const { data } = await apiLogin(member_id, password);
-            localStorage.setItem('abhimat_token', data.token);
-            localStorage.setItem('abhimat_user', JSON.stringify(data.user));
+            localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
+            localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
             setUser(data.user);
             // Crucial: keep Zustand store in sync instantly
             useUserStore.getState().setUser(data.user, data.token);
@@ -31,8 +32,8 @@ export function AuthProvider({ children }) {
     }
 
     const logout = useCallback(() => {
-        localStorage.removeItem('abhimat_token');
-        localStorage.removeItem('abhimat_user');
+        localStorage.removeItem(STORAGE_TOKEN_KEY);
+        localStorage.removeItem(STORAGE_USER_KEY);
         setUser(null);
         // Force sync Zustand store
         useUserStore.getState().logout();
@@ -43,7 +44,7 @@ export function AuthProvider({ children }) {
         try {
             const { data } = await getMe();
             setUser(data.user);
-            localStorage.setItem('abhimat_user', JSON.stringify(data.user));
+            localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
             useUserStore.getState().setUser(data.user);
         } catch {
             logout();

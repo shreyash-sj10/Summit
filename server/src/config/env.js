@@ -14,7 +14,6 @@ export const env = {
   port: Number(process.env.PORT || 3001),
   clientOrigins: [
     "http://localhost:5173",
-    "https://abhimat.netlify.app",
     ...(process.env.CLIENT_URL
       ? process.env.CLIENT_URL.split(",").map((origin) => origin.trim()).filter(Boolean)
       : []),

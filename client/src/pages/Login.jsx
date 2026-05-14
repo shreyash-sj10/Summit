@@ -49,7 +49,7 @@ export default function Login() {
                                     <span className="material-symbols-outlined text-white text-3xl">gavel</span>
                                 </div>
                             </div>
-                            <h1 className="text-2xl font-black text-neutral-dark tracking-tight">ABHIMAT '26</h1>
+                            <h1 className="text-2xl font-black text-neutral-dark tracking-tight">Summit</h1>
                             <h3 className="text-india-green font-bold text-sm tracking-widest uppercase mt-1">Parliamentary Login</h3>
                             {/* Tricolor divider */}
                             <div className="flex items-center justify-center gap-3 mt-4">

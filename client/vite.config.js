@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'logo192.png'],
       manifest: {
-        name: 'ABHIMAT 2026 – Parliamentary System',
-        short_name: 'ABHIMAT',
+        name: 'Summit – Parliamentary Session System',
+        short_name: 'Summit',
         description: 'Model Lok Sabha Session Management',
         theme_color: '#FF9933',
         background_color: '#ffffff',

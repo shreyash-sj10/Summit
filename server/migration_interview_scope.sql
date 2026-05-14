@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration: Interview Scope Hardening
+-- Migration: Interview Scope Hardening (Summit)
 -- - Removes deprecated chat/power-card modules
 -- - Aligns sessions.stage constraint with 8-stage model
 -- ============================================================

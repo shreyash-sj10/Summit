@@ -1,5 +1,5 @@
 -- ============================================================
---  ABHIMAT '26 – FULL RESET + CLEAN SCHEMA
+--  Summit – FULL RESET + CLEAN SCHEMA
 --  Paste this entire file into Supabase → SQL Editor → Run
 -- ============================================================
 

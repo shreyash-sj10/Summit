@@ -1,4 +1,4 @@
-# ABHIMAT Interview Scope
+# Summit Interview Scope
 
 This document defines the active, defendable scope for interview demos.
 
@@ -26,4 +26,4 @@ These modules are intentionally removed from active code paths to keep the proje
 
 ## Interview Positioning
 
-Describe ABHIMAT as a multi-role, real-time governance platform with deterministic queue control, stage-driven workflow, and official scoring-to-leaderboard resolution.
+Describe Summit as a multi-role, real-time governance platform with deterministic queue control, stage-driven workflow, and official scoring-to-leaderboard resolution.

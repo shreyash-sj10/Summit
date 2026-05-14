@@ -60,7 +60,7 @@ function WaitingProjection({ totalTeams }) {
           </div>
           <div className="flex flex-col">
             <span className="text-xl font-bold tracking-tight text-neutral-dark uppercase">
-              ABHIMAT
+              Summit
             </span>
             <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-gray-400">
               Debate Projection Screen
@@ -82,14 +82,14 @@ function WaitingProjection({ totalTeams }) {
           <div className="absolute inset-0 bg-saffron/20 blur-2xl rounded-full mix-blend-multiply" />
           <img
             src="/logo.png"
-            alt="Abhimat Logo"
+            alt="Summit"
             className="w-full h-full object-contain relative z-10 drop-shadow-lg"
           />
         </div>
 
         {/* Title */}
         <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-2 text-neutral-dark">
-          ABHIMAT
+          Summit
         </h1>
 
         <div className="h-1 w-24 bg-saffron mx-auto rounded-full mb-4" />
@@ -217,7 +217,7 @@ function WinnerProjection({ sessionTitle, leaderboard }) {
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-gray-400">
-              ABHIMAT &apos;26 · Session complete
+              Summit · Session complete
             </p>
             <h1 className="text-xl lg:text-2xl font-extrabold text-neutral-dark tracking-tight">
               {sessionTitle || "Parliamentary session"}
@@ -364,7 +364,7 @@ export default function ProjectionPage() {
               </div>
               <div>
                 <h1 className="text-lg font-extrabold tracking-tight text-neutral-dark leading-none">
-                  ABHIMAT '26
+                  Summit
                 </h1>
                 <p className="text-xs font-medium text-gray-500 mt-0.5 uppercase tracking-wide">
                   Moderator Panel
