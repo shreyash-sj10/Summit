@@ -29,11 +29,26 @@ function updatedRow(data) {
 }
 
 /** PostgREST can omit rows in the UPDATE response; confirm persistence with SELECT. */
+function parseBillPayload(val) {
+  if (val == null) return null;
+  if (typeof val === "object" && !Array.isArray(val)) return val;
+  if (typeof val === "string") {
+    try {
+      const o = JSON.parse(val);
+      return typeof o === "object" && o !== null && !Array.isArray(o) ? o : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function billPayloadMatches(stored, name, summary) {
-  if (!stored || typeof stored !== "object") return false;
+  const o = parseBillPayload(stored);
+  if (!o) return false;
   return (
-    String(stored.name ?? "").trim() === String(name ?? "").trim() &&
-    String(stored.summary ?? "").trim() === String(summary ?? "").trim()
+    String(o.name ?? "").trim() === String(name ?? "").trim() &&
+    String(o.summary ?? "").trim() === String(summary ?? "").trim()
   );
 }
 
@@ -87,9 +102,10 @@ router.post("/bill-data", authMiddleware, async (req, res) => {
     return res.status(403).json({ error: "Moderator access required" });
   }
 
-  const { session_id, bill_number, bill_name, bill_summary } = req.body;
-  if (!bill_number) {
-    return res.status(400).json({ error: "bill_number is required" });
+  const { session_id, bill_name, bill_summary } = req.body;
+  const bill_number = Number.parseInt(String(req.body.bill_number), 10);
+  if (!Number.isInteger(bill_number) || bill_number < 1 || bill_number > 2) {
+    return res.status(400).json({ error: "bill_number must be 1 or 2" });
   }
 
   const activeId = await resolveActiveSessionId();
@@ -177,9 +193,10 @@ router.post("/team-selection", authMiddleware, async (req, res) => {
     return res.status(403).json({ error: "Moderator access required" });
   }
 
-  const { session_id, bill_number, team_a, team_b, startTime } = req.body;
-  if (!bill_number) {
-    return res.status(400).json({ error: "bill_number is required" });
+  const { session_id, team_a, team_b, startTime } = req.body;
+  const bill_number = Number.parseInt(String(req.body.bill_number), 10);
+  if (!Number.isInteger(bill_number) || bill_number < 1 || bill_number > 2) {
+    return res.status(400).json({ error: "bill_number must be 1 or 2" });
   }
 
   const activeId = await resolveActiveSessionId();
