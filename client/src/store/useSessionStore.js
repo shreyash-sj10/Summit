@@ -9,6 +9,9 @@ import {
 } from "../shared/services/api";
 import { getSpeechDuration } from "../shared/utils/stageBehaviors";
 
+/** Dismiss overlapping GET /session/active results (bill row update vs stage update). */
+let activeSessionFetchId = 0;
+
 const useSessionStore = create((set, get) => ({
   session: null,
   stage: null,
@@ -106,6 +109,7 @@ const useSessionStore = create((set, get) => ({
   },
 
   fetchActiveSession: async () => {
+    const fetchId = ++activeSessionFetchId;
     set({ isLoading: true, error: null });
     try {
       const [sessRes, pollRes, leadRes] = await Promise.all([
@@ -113,6 +117,9 @@ const useSessionStore = create((set, get) => ({
         getActivePoll(),
         getLeaderboard(),
       ]);
+      if (fetchId !== activeSessionFetchId) {
+        return;
+      }
       const sess = sessRes.data.session;
       const activeSpk = sess?.current_speaker;
       const stageVal = sess?.stage || "WAITING";
@@ -171,12 +178,17 @@ const useSessionStore = create((set, get) => ({
         get().startTimer(speechSeconds, 0);
       }
     } catch (err) {
+      if (fetchId !== activeSessionFetchId) {
+        return;
+      }
       set({
         error:
           err.response?.data?.error || err.message || "Failed to fetch session",
       });
     } finally {
-      set({ isLoading: false });
+      if (fetchId === activeSessionFetchId) {
+        set({ isLoading: false });
+      }
     }
   },
 
@@ -262,12 +274,17 @@ const useSessionStore = create((set, get) => ({
 
   updateStage: async (newStage) => {
     const { session, fetchActiveSession } = get();
-    if (!session) return;
+    if (!session?.id) {
+      throw new Error("No active session — refresh the page or check Supabase has an active session.");
+    }
     try {
       await updateSessionStage(session.id, newStage);
-      // Reload session from API so UI updates even if Realtime broadcast/postgres
-      // events are misconfigured (previously we only listened for a broadcast on
-      // the wrong channel name as the server).
+      set((state) => ({
+        stage: newStage,
+        session: state.session
+          ? { ...state.session, stage: newStage }
+          : null,
+      }));
       await fetchActiveSession();
     } catch (e) {
       set({ error: "Failed to update stage" });
