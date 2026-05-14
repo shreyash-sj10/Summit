@@ -40,11 +40,12 @@ See **`DEPLOYMENT.md`** for step-by-step hosting and Docker (`summit-server` / `
 ## Repository layout
 
 ```text
-├── client/          # Vite React app (member, moderator, projection)
-├── server/          # Express API + SQL migrations
+.github/             # CI (client lint+build, server check)
+├── client/          # Vite React app
+├── server/          # Express API + SQL
 ├── PRD.md
 ├── DEPLOYMENT.md
-└── package.json     # root scripts: npm run dev | start → server
+└── package.json     # dev, build, lint, check, verify
 ```
 
 The checkout folder on disk may still be named `abhimat` if cloned from the original remote; the **product name in the app and docs is Summit**.
@@ -56,6 +57,8 @@ The checkout folder on disk may still be named `abhimat` if cloned from the orig
 3. **Client:** `cd client` — `.env` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=http://localhost:3001` (or rely on Vite proxy for API paths in dev).
 4. **Run API:** from repo root `npm run dev` (starts server with watch), or `cd server && npm run dev`.
 5. **Run UI:** `cd client && npm run dev` (Vite proxies `/auth`, `/session`, `/hand`, `/queue`, `/speaker`, `/polls`, `/points`, `/moderator`, `/party` to `:3001`).
+
+**Quality gate (from repo root):** `npm run verify` — ESLint + client production build + server syntax check.
 
 ## API surface (summary)
 

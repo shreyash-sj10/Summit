@@ -61,7 +61,7 @@ export default function Leaderboard({ leaderboard, alwaysShowAll = false }) {
                                     key={entry.points}
                                     className={`text-2xl font-black tabular-nums ${idx === 0 ? 'text-saffron' : 'text-neutral-dark'}`}
                                     initial={{ scale: 1.3, color: '#22c55e' }}
-                                    animate={{ scale: 1, color: idx === 0 ? '#FF9933' : '#1a1a2e' }}
+                                    animate={{ scale: 1, color: idx === 0 ? '#0d9488' : '#0f172a' }}
                                     transition={{ duration: 0.5 }}
                                 >
                                     {entry.points}

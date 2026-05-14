@@ -4,7 +4,6 @@ import { useAuth } from './shared/context/useAuth';
 import Landing from './pages/Landing';
 import MemberDashboard from './member/pages/Dashboard';
 import ModeratorDashboard from './moderator/pages/Dashboard';
-import DisplayDashboard from './display/pages/Dashboard';
 import ProjectionPage from './display/pages/ProjectionPage';
 
 function ProtectedRoute({ children, requiredRole }) {

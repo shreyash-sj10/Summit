@@ -4,13 +4,13 @@ export default {
     theme: {
         extend: {
             colors: {
-                'saffron': '#FF9933',
-                'india-green': '#138808',
-                'ashoka-blue': '#000080',
-                'accent': '#FFD700',
+                'saffron': '#0d9488',
+                'india-green': '#475569',
+                'ashoka-blue': '#312e81',
+                'accent': '#f59e0b',
                 'alert-red': '#dc2626',
-                'neutral-dark': '#1d140c',
-                'background-light': '#f8f7f5',
+                'neutral-dark': '#0f172a',
+                'background-light': '#f1f5f9',
             },
             fontFamily: {
                 display: ['Inter', 'Plus Jakarta Sans', 'sans-serif'],

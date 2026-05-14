@@ -7,13 +7,14 @@
 
 /* ─── Tailwind v4 custom theme tokens ─── */
 @theme {
-  --color-saffron: #FF9933;
-  --color-india-green: #138808;
-  --color-ashoka-blue: #000080;
-  --color-accent: #FFD700;
+  /* Summit UI — slate + teal (replaces prior tricolor-adjacent hues; token names unchanged for components) */
+  --color-saffron: #0d9488;
+  --color-india-green: #475569;
+  --color-ashoka-blue: #312e81;
+  --color-accent: #f59e0b;
   --color-alert-red: #dc2626;
-  --color-neutral-dark: #1d140c;
-  --color-background-light: #f8f7f5;
+  --color-neutral-dark: #0f172a;
+  --color-background-light: #f1f5f9;
 
   --font-display: 'Inter', 'Plus Jakarta Sans', sans-serif;
 
@@ -48,13 +49,13 @@
 
 /* ─── Design Tokens ─── */
 :root {
-  --saffron: #FF9933;
-  --india-green: #138808;
-  --ashoka-blue: #000080;
-  --accent: #FFD700;
+  --saffron: #0d9488;
+  --india-green: #475569;
+  --ashoka-blue: #312e81;
+  --accent: #f59e0b;
   --alert-red: #dc2626;
-  --neutral-dark: #1d140c;
-  --background-light: #f8f7f5;
+  --neutral-dark: #0f172a;
+  --background-light: #f1f5f9;
 }
 
 /* ─── Base ─── */
@@ -78,9 +79,9 @@ body {
 /* ─── Tricolor wavy button ─── */
 .btn-wavy-tricolor {
   background: linear-gradient(110deg,
-      #FF9933 0%, #FF9933 40%,
-      #138808 50%,
-      #FF9933 60%, #FF9933 100%);
+      #0d9488 0%, #0d9488 40%,
+      #475569 50%,
+      #0d9488 60%, #0d9488 100%);
   background-size: 200% 200%;
   color: white;
   animation: wave-gradient 3s linear infinite;
@@ -117,7 +118,7 @@ body {
 
 /* ─── Dot pattern background ─── */
 .bg-pattern {
-  background-image: radial-gradient(#FF9933 0.5px, transparent 0.5px);
+  background-image: radial-gradient(#0d9488 0.5px, transparent 0.5px);
   background-size: 16px 16px;
   opacity: 0.07;
   pointer-events: none;

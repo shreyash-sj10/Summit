@@ -6,9 +6,9 @@ import { useAuth } from '../shared/context/useAuth';
 function Chakra({ size = 100 }) {
     return (
         <svg width={size} height={size} viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="128" cy="128" r="120" stroke="#000080" strokeWidth="5" />
-            <circle cx="128" cy="128" r="20" fill="#000080" />
-            <g stroke="#000080" strokeWidth="2.5">
+            <circle cx="128" cy="128" r="120" stroke="#312e81" strokeWidth="5" />
+            <circle cx="128" cy="128" r="20" fill="#312e81" />
+            <g stroke="#312e81" strokeWidth="2.5">
                 {[0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285, 300, 315, 330, 345].map(deg => (
                     <line key={deg} x1="128" y1="20" x2="128" y2="236"
                         transform={`rotate(${deg} 128 128)`} />
@@ -117,9 +117,9 @@ export default function Landing() {
 
                     {/* Corner accents */}
                     <div className="absolute inset-0 pointer-events-none"
-                        style={{ background: 'radial-gradient(circle at top left, rgba(255,153,51,0.15) 0%, transparent 70%)' }} />
+                        style={{ background: 'radial-gradient(circle at top left, rgba(13,148,136,0.15) 0%, transparent 70%)' }} />
                     <div className="absolute inset-0 pointer-events-none"
-                        style={{ background: 'radial-gradient(circle at bottom right, rgba(19,136,8,0.15) 0%, transparent 70%)' }} />
+                        style={{ background: 'radial-gradient(circle at bottom right, rgba(71,85,105,0.15) 0%, transparent 70%)' }} />
 
                     <div className="flex h-full w-full">
                         {/* Left — hero panel */}
@@ -129,7 +129,7 @@ export default function Landing() {
                                 style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuCqM4RGLjA2PhrKe9_Ei1E5_3yJ0NlgCD06lgOfDtIJMKRmmo43KNrIRDwYa9puHtbEDVLw380ctXMTOe4kYs7eNr49vqC8PQtcvWv1twzSLowvQOIpL6HFHjgGCtrC7ANTAAvikv91v0tLi3rJ_AfAG9akidWZdedYBCYE84w5Hv0QM-pXP8vrDdzfeBuqSCviEIm7XLwOGSoEgEBjGNzDWwaO1gED8XkEul6iFj2w9e_a1VwQHvpbvviSbkyC2Pnov6DeipUYaog')" }} />
                             {/* Tricolor overlay */}
                             <div className="absolute inset-0"
-                                style={{ background: 'linear-gradient(to bottom, rgba(255,153,51,0.25) 0%, rgba(255,255,255,0.85) 50%, rgba(19,136,8,0.25) 100%)', mixBlendMode: 'overlay' }} />
+                                style={{ background: 'linear-gradient(to bottom, rgba(13,148,136,0.25) 0%, rgba(255,255,255,0.85) 50%, rgba(71,85,105,0.25) 100%)', mixBlendMode: 'overlay' }} />
                             <div className="absolute inset-0 bg-white/40" />
 
                             {/* Center content */}
@@ -205,7 +205,7 @@ export default function Landing() {
                     <div className="absolute inset-0 bg-cover bg-center scale-110 blur-sm"
                         style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuCqM4RGLjA2PhrKe9_Ei1E5_3yJ0NlgCD06lgOfDtIJMKRmmo43KNrIRDwYa9puHtbEDVLw380ctXMTOe4kYs7eNr49vqC8PQtcvWv1twzSLowvQOIpL6HFHjgGCtrC7ANTAAvikv91v0tLi3rJ_AfAG9akidWZdedYBCYE84w5Hv0QM-pXP8vrDdzfeBuqSCviEIm7XLwOGSoEgEBjGNzDWwaO1gED8XkEul6iFj2w9e_a1VwQHvpbvviSbkyC2Pnov6DeipUYaog')" }} />
                     <div className="absolute inset-0"
-                        style={{ background: 'linear-gradient(to bottom, rgba(255,153,51,0.2) 0%, rgba(255,255,255,0.8) 50%, rgba(19,136,8,0.2) 100%)', mixBlendMode: 'overlay' }} />
+                        style={{ background: 'linear-gradient(to bottom, rgba(13,148,136,0.2) 0%, rgba(255,255,255,0.8) 50%, rgba(71,85,105,0.2) 100%)', mixBlendMode: 'overlay' }} />
                     <div className="absolute inset-0 bg-white/40" />
                 </div>
 
