@@ -20,10 +20,12 @@ router.post('/login', async (req, res) => {
         .from('members')
         .select('id,member_id,name,party,constituency,role,speeches_count,password_hash')
         .eq('member_id', normalizedMemberId)
-        .single();
+        .maybeSingle();
 
+    // maybeSingle: no row => member null, error null (avoids treating "no rows" as a DB failure)
     if (error) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+        console.error('[auth/login] Supabase error:', error.code, error.message);
+        return res.status(500).json({ error: 'Unable to verify credentials' });
     }
 
     if (!member) {

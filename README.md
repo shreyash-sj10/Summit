@@ -71,3 +71,23 @@ The checkout folder on disk may still be named `abhimat` if cloned from the orig
 ## License
 
 Private / team use unless you add an explicit license file.
+
+## Login troubleshooting
+
+Use **Member ID** + **password** (passwords are compared **case-insensitively**; member IDs are normalized to **uppercase**).
+
+**Seeded accounts** (after running `server/supabase_schema.sql` and, if needed, `server/migration_password_rls.sql`):
+
+| Member ID | Password |
+|-------------|----------|
+| `MOD00001` | `mod` |
+| `DASHMOD` | `dash` |
+| `JDG10001` (or `JDG10002`, `JDG10003`) | `jdg` |
+| `BJP10001`, … | `bjp` (same idea: `inc`, `aap`, `tmc` for those parties) |
+
+If login still fails:
+
+1. **Watch the API terminal** when you click login — real database/config issues log as `[auth/login] Supabase error:` and return **500** with `Unable to verify credentials` (not 401).
+2. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** (service role, not anon).
+3. In Supabase **Table Editor → `members`**, confirm a row exists for that `member_id` and that `password_hash` is set (or leave null to use legacy “password = party name” for members only).
+4. Confirm the browser is calling your API: dev uses Vite proxy to `localhost:3001`; production needs **`VITE_API_URL`** set to the public API URL.
