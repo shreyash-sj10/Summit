@@ -6,6 +6,20 @@ import { getValidStages } from "../config/stageConfig.js";
 
 const router = express.Router();
 
+/** Row id for `sessions.is_active = true`, or null if none / error. */
+async function resolveActiveSessionId() {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error && error.code !== "PGRST116") {
+    console.error("[sessions] resolveActiveSessionId:", error.code, error.message);
+    return null;
+  }
+  return data?.id ?? null;
+}
+
 // GET /session/active
 router.get("/active", authMiddleware, async (req, res) => {
   try {
@@ -57,24 +71,42 @@ router.post("/bill-data", authMiddleware, async (req, res) => {
   }
 
   const { session_id, bill_number, bill_name, bill_summary } = req.body;
-  if (!session_id || !bill_number) {
-    return res.status(400).json({ error: "session_id and bill_number are required" });
+  if (!bill_number) {
+    return res.status(400).json({ error: "bill_number is required" });
+  }
+
+  const activeId = await resolveActiveSessionId();
+  if (!activeId) {
+    return res.status(400).json({
+      error: "No active session in the database. Set exactly one sessions row to is_active = true in Supabase.",
+    });
+  }
+  const bodySid = session_id ? String(session_id).trim() : "";
+  if (bodySid && bodySid !== activeId) {
+    console.warn(
+      "[session/bill-data] Client session_id does not match active session; using active row",
+      { bodySid, activeId },
+    );
   }
 
   const col = bill_number === 1 ? "bill_1_data" : "bill_2_data";
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("sessions")
     .update({ [col]: { name: bill_name, summary: bill_summary } })
-    .eq("id", session_id);
+    .eq("id", activeId)
+    .select("id");
 
   if (error) return res.status(500).json({ error: error.message });
+  if (!updated?.length) {
+    return res.status(404).json({ error: "Could not update bill data on the active session." });
+  }
 
   // Broadcast
   try {
     await supabase.channel("bill-updates").send({
       type: "broadcast",
       event: "bill:update",
-      payload: { sessionId: session_id, bill_number },
+      payload: { sessionId: activeId, bill_number },
     });
   } catch (err) {
     console.error("Failed to broadcast bill update:", err);
@@ -90,8 +122,22 @@ router.post("/team-selection", authMiddleware, async (req, res) => {
   }
 
   const { session_id, bill_number, team_a, team_b, startTime } = req.body;
-  if (!session_id || !bill_number) {
-    return res.status(400).json({ error: "session_id and bill_number are required" });
+  if (!bill_number) {
+    return res.status(400).json({ error: "bill_number is required" });
+  }
+
+  const activeId = await resolveActiveSessionId();
+  if (!activeId) {
+    return res.status(400).json({
+      error: "No active session in the database. Set exactly one sessions row to is_active = true in Supabase.",
+    });
+  }
+  const bodySid = session_id ? String(session_id).trim() : "";
+  if (bodySid && bodySid !== activeId) {
+    console.warn(
+      "[session/team-selection] Client session_id does not match active session; using active row",
+      { bodySid, activeId },
+    );
   }
 
   const key = bill_number === 1 ? "bill1Round2" : "bill2Round2";
@@ -100,7 +146,7 @@ router.post("/team-selection", authMiddleware, async (req, res) => {
   const { data: session } = await supabase
     .from("sessions")
     .select("team_selections")
-    .eq("id", session_id)
+    .eq("id", activeId)
     .single();
 
   const currentSelections = session?.team_selections || {};
@@ -109,19 +155,23 @@ router.post("/team-selection", authMiddleware, async (req, res) => {
     [key]: { teamA: team_a, teamB: team_b, startTime: startTime || null }
   };
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("sessions")
     .update({ team_selections: newVal })
-    .eq("id", session_id);
+    .eq("id", activeId)
+    .select("id");
 
   if (error) return res.status(500).json({ error: error.message });
+  if (!updated?.length) {
+    return res.status(404).json({ error: "Could not update team selection on the active session." });
+  }
 
   // Broadcast
   try {
     await supabase.channel("team-selection-updates").send({
       type: "broadcast",
       event: "team-selection:update",
-      payload: { sessionId: session_id },
+      payload: { sessionId: activeId },
     });
   } catch (err) {
     console.error("Failed to broadcast team selection update:", err);
@@ -138,8 +188,8 @@ router.post("/stage", authMiddleware, async (req, res) => {
 
   const session_id = String(req.body.session_id ?? "").trim();
   const stage = req.body.stage;
-  if (!session_id || !stage) {
-    return res.status(400).json({ error: "session_id and stage are required" });
+  if (!stage) {
+    return res.status(400).json({ error: "stage is required" });
   }
 
   const validStages = getValidStages();
@@ -147,24 +197,30 @@ router.post("/stage", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "Invalid stage value" });
   }
 
-  // .select() is required: PostgREST returns no error when 0 rows match — that
-  // would leave clients stuck on WAITING while thinking the update succeeded.
+  const activeId = await resolveActiveSessionId();
+  if (!activeId) {
+    return res.status(400).json({
+      error: "No active session in the database. Set exactly one sessions row to is_active = true in Supabase.",
+    });
+  }
+  if (session_id && session_id !== activeId) {
+    console.warn(
+      "[session/stage] Client session_id does not match active session; using active row",
+      { session_id, activeId },
+    );
+  }
+
   const { data: updated, error } = await supabase
     .from("sessions")
     .update({ stage })
-    .eq("id", session_id)
-    .eq("is_active", true)
+    .eq("id", activeId)
     .select("id, stage");
 
   if (error) return res.status(500).json({ error: error.message });
   if (!updated?.length) {
-    console.error(
-      "[session/stage] No row updated for id=%s (wrong id or session not active)",
-      session_id,
-    );
+    console.error("[session/stage] No row updated for activeId=%s", activeId);
     return res.status(404).json({
-      error:
-        "No active session was updated. Refresh the moderator page so session id matches Supabase (Table sessions → is_active = true).",
+      error: "Could not update stage on the active session.",
     });
   }
 
