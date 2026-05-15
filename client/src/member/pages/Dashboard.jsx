@@ -14,6 +14,7 @@ import StageOverlay from "../../components/floor/StageOverlay";
 import Leaderboard from "../../moderator/components/Leaderboard";
 import WaitingRoom from "../components/WaitingRoom";
 import OneVsOneLayout from "../components/OneVsOneLayout";
+import { MAX_SPEECHES_PER_BILL } from "../../shared/constants";
 
 const TABS = [
   { id: "home", icon: "dashboard", label: "Session" },
@@ -86,12 +87,12 @@ function MemberDesktopSidebar({ tab, setTab, user, partyDetails, speechesLeft })
               <span className="text-xl font-black text-neutral-dark">
                 {speechesLeft}
               </span>
-              <span className="text-sm font-bold text-gray-400">/ 2</span>
+              <span className="text-sm font-bold text-gray-400">/ {MAX_SPEECHES_PER_BILL}</span>
             </div>
             <div className="h-1.5 w-full bg-gray-200 rounded-full mt-2 overflow-hidden shadow-inner">
               <div
                 className="h-full bg-accent transition-all duration-500"
-                style={{ width: `${(speechesLeft / 2) * 100}%` }}
+                style={{ width: `${(speechesLeft / MAX_SPEECHES_PER_BILL) * 100}%` }}
               />
             </div>
           </div>
@@ -247,7 +248,10 @@ export default function MemberDashboard() {
     loadParty,
   ]);
 
-  const speechesLeft = Math.max(0, 2 - (user?.speeches_count || 0));
+  const speechesLeft = Math.max(
+    0,
+    MAX_SPEECHES_PER_BILL - (user?.speeches_count || 0),
+  );
 
   // If stage is WAITING, take over the entire screen for the user
   if (session?.stage === "WAITING") {
@@ -318,12 +322,12 @@ export default function MemberDashboard() {
                   <span className="text-2xl font-black text-neutral-dark">
                     {speechesLeft}
                   </span>
-                  <span className="text-sm font-bold text-gray-400">/ 2</span>
+                  <span className="text-sm font-bold text-gray-400">/ {MAX_SPEECHES_PER_BILL}</span>
                 </div>
                 <div className="h-1.5 w-full bg-gray-100 rounded-full mt-2 overflow-hidden shadow-inner">
                   <div
                     className="h-full bg-accent transition-all duration-500"
-                    style={{ width: `${(speechesLeft / 2) * 100}%` }}
+                    style={{ width: `${(speechesLeft / MAX_SPEECHES_PER_BILL) * 100}%` }}
                   />
                 </div>
               </div>

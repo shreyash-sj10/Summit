@@ -2,10 +2,10 @@ import express from "express";
 import { supabase } from "../supabase.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { raiseHandAccessStore, raiseHandWindowStore } from "../state/raiseHandState.js";
+import { MAX_SPEECHES_PER_BILL } from "../config/constants.js";
 
 const router = express.Router();
 
-// POST /hand/raise  — concurrency-safe via RPC
 router.post("/raise", authMiddleware, async (req, res) => {
   const memberId = req.user.id;
 
@@ -71,7 +71,7 @@ router.post("/raise", authMiddleware, async (req, res) => {
     .single();
 
   const speechCount = member?.speeches_count || 0;
-  if (speechCount >= 2) {
+  if (speechCount >= MAX_SPEECHES_PER_BILL) {
     return res.status(403).json({
       error: "You have no chances left to speak",
       reason: "NO_CHANCES_LEFT",

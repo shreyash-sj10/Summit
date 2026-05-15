@@ -1,5 +1,5 @@
 // Shared client-side constants
-export const MAX_SPEECHES_PER_BILL = 5;
+export const MAX_SPEECHES_PER_BILL = 2;
 
 /** localStorage keys (Summit branding) */
 export const STORAGE_TOKEN_KEY = "summit_token";

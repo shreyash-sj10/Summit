@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { raiseHand, lowerHand } from "../../shared/services/api";
 import useRaiseHandWindowStore from "../../store/useRaiseHandWindowStore";
+import { MAX_SPEECHES_PER_BILL } from "../../shared/constants";
 
 export default function RaiseHandButton({ queueEntry, onUpdate }) {
   const [loading, setLoading] = useState(false);
@@ -10,7 +11,7 @@ export default function RaiseHandButton({ queueEntry, onUpdate }) {
   const isSpeaking = queueEntry?.status === "speaking";
   const speechesLeft = Math.max(
     0,
-    2 - (queueEntry?.member?.speeches_count || 0),
+    MAX_SPEECHES_PER_BILL - (queueEntry?.member?.speeches_count || 0),
   );
   const noChancesLeft = speechesLeft === 0;
 
