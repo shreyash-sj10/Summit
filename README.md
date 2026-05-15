@@ -48,6 +48,16 @@ flowchart TB
   RT --> PG
 ```
 
+### Detailed Diagrams
+
+#### In-Depth System Architecture
+
+![SUMMIT In-Depth System Architecture](docs/images/summit-system-architecture.png)
+
+#### End-to-End System Flow
+
+![SUMMIT End-to-End System Flow](docs/images/summit-system-flow.png)
+
 ### Key Design Decisions
 
 **Server-authoritative mutations with RLS read-only on the client**  
