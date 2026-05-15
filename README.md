@@ -1,103 +1,253 @@
 # Summit
 
-**Summit** is a real-time, multi-role parliamentary session platform: moderated speaking queues, stage-driven debate flow, polls, multi-official scoring, and a dedicated projection view for the hall.
+### Real-time parliamentary session coordination for moderated debate, floor control, and hall projection.
 
-## Resume-ready (SDE) — what to claim
+> A realtime session coordination system for structured multi-role parliamentary workflows.
+---
 
-Use these bullets on a resume or in interviews; they match the shipped code:
+## Overview
 
-- Full-stack **React 19 + Vite** SPA with **Zustand**, **Tailwind**, **PWA**, role-based routing (`member`, `moderator`, `judge`, `display`).
-- **Express 5** REST API with **JWT** auth, **Helmet**, **CORS**, **rate limiting** (including tighter limits on hand-raise).
-- **Supabase Postgres** as source of truth; **RLS** for read; **service role** on server for writes; **Realtime** for `sessions`, queue, polls, votes, team points.
-- **Concurrency-sensitive floor**: 5s raise-hand window, server-side validation, queue priority by `speeches_count` and timestamp.
-- **8-stage lifecycle** (waiting → two bills × two rounds including 1v1 → winner); bill JSON, team selections, `current_speaker_started_at` on active session for hall timer sync.
-- **CI** (GitHub Actions): client lint + build; server syntax check.
+Summit runs a single active debate session where a moderator advances an eight-stage lifecycle, members compete for the floor through time-boxed raise-hand windows, and judges score speakers while a projection surface mirrors floor state for the room.
 
-## Deployment-ready — what is done vs. left to you
+The stack keeps **Postgres as the durable source of truth** (queue, session stage, bills, grades, polls) and uses **Supabase Realtime** plus targeted API broadcasts so member, moderator/judge, and display clients stay aligned without polling the full session on every change.
 
-| Done in repo | You still configure on the host |
-|--------------|-----------------------------------|
-| Dockerfiles for `client` and `server` | Supabase project + run **`server/supabase_schema.sql` once** (see file header) |
-| `GET /health` | Env: `SUPABASE_*`, `JWT_SECRET`, `CLIENT_URL` (comma-separated origins) |
-| Production client build (`npm run build`) | Client env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` |
-| CI workflow | DNS, TLS, SPA fallback to `index.html` on the CDN |
-| CORS allows `http://localhost:5173` + `CLIENT_URL` | Optional: hardening, monitoring, backups |
+---
 
-See **`DEPLOYMENT.md`** for step-by-step hosting and Docker (`summit-server` / `summit-client` image names).
+## Architecture
 
-## Product documentation
+### High-Level Diagram
 
-- **`PRD.md`** — product requirements aligned with the current locked implementation (Summit branding).
+```mermaid
+flowchart TB
+  subgraph clients["Clients (React SPA)"]
+    M[Member /member]
+    MOD[Moderator & Judge /moderator]
+    PROJ[Projection /projection]
+  end
 
-## Tech stack
+  subgraph api["API (Express)"]
+    AUTH[Auth JWT]
+    SESS[Session & stage]
+    HAND[Hand / queue arbitration]
+    SPK[Speaker floor]
+    POLL[Polls & points]
+    GRADE[Official grading]
+  end
 
-| Layer | Stack |
-|-------|--------|
-| UI | React 19, Vite 7, React Router 7, Tailwind 4, Framer Motion, Zustand, Axios, vite-plugin-pwa |
-| API | Node.js, Express 5, jsonwebtoken, bcryptjs, @supabase/supabase-js (service role) |
-| Data | Supabase PostgreSQL + Realtime |
+  subgraph data["Supabase"]
+    PG[(PostgreSQL)]
+    RT[Realtime publication]
+  end
+
+  M -->|REST Bearer JWT| api
+  MOD -->|REST Bearer JWT| api
+  PROJ -->|REST + anon Realtime| RT
+
+  api -->|service role writes| PG
+  clients -->|postgres_changes + broadcast| RT
+  RT --> PG
+```
+
+### Key Design Decisions
+
+**Server-authoritative mutations with RLS read-only on the client**  
+All writes go through Express and the Supabase **service role**; anon/authenticated clients only **SELECT** under RLS. Tradeoff: the API must stay available for every state change; clients cannot patch the DB directly.
+
+**Hybrid state for raise-hand windows**  
+A **5-second** participation window is enforced in **in-memory** maps (`raiseHandAccessStore`, `raiseHandWindowStore`) with Realtime **broadcast** for enable/disable. The speaker **queue** lives in Postgres. Tradeoff: window state is lost on API restart and is not shared across multiple API instances without a distributed store.
+
+**Single active session row**  
+`GET /session/active` and stage/bill updates resolve the row where `is_active = true` (partial unique index). Tradeoff: only one live event per database; multi-tenant or parallel sessions need a different model.
+
+**Stage config as shared contract**  
+`server/src/config/stageConfig.js` and `client/src/shared/utils/stageBehaviors.js` encode buzzer, scoring, 1v1, and speech durations (60s / 90s). Tradeoff: stage renames require coordinated server + client + DB constraint updates.
+
+**Hall timer anchored to server time**  
+`GET /session/active` includes `current_speaker_started_at` from the active `speaker_queue` row so clients can resync elapsed time after refresh. Tradeoff: timer UX depends on that field being set correctly when the moderator approves a speaker.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Why |
+|-------|------------|-----|
+| Frontend | React 19, Vite 7, React Router 7, Zustand, Tailwind 4 | Role-split SPA with local session/queue stores and PWA-friendly build |
+| Backend | Node.js 20+, Express 5 | Central validation, JWT, rate limits, service-role Supabase access |
+| Database | PostgreSQL (Supabase) | Relational session, queue, grades, polls; JSONB for bills and team picks |
+| Realtime | Supabase Realtime | `postgres_changes` on core tables + named broadcast channels for stage and buzzer |
+| Auth | JWT (12h) + bcrypt `password_hash` on `members` | Stateless API auth; passwords verified server-side only |
+
+---
+
+## Features
+
+### Workflow engine
+
+- Eight-stage lifecycle: waiting → bill setup/debate rounds (including 1v1) → winner
+- Server-validated `POST /session/stage` with canonical stage enum
+- Bill metadata (`bill_1_data`, `bill_2_data`) and team selection JSON for round-2 face-offs
+
+### Queue and arbitration
+
+- Moderator opens a **5s** raise-hand window only in configured debate stages
+- Members submit during the window; server rejects duplicate queue rows and enforces **max two** speeches per member via `speeches_count`
+- Queue ordering uses priority score and timestamps (see server queue/hand routes)
+
+### Scoring and polls
+
+- Judges submit rubric grades on active speaker turns; moderators manage polls and poll-weighted scoring where enabled
+- Team points leaderboard per session and party
+
+### Realtime sync
+
+- Session, queue, polls, votes, and team points propagate via Postgres Realtime subscriptions
+- Stage and buzzer events use broadcast channels (e.g. `global-session-channel`, `raise-hand-updates`)
+
+### Surfaces
+
+| Role | Route | Purpose |
+|------|-------|---------|
+| `member` | `/member` | Floor participation, polls, party context |
+| `moderator` | `/moderator` | Stage, buzzer, bills, queue, polls |
+| `judge` | `/moderator` | Grading UI (API blocks non-moderator floor control) |
+| `display` | `/projection` | Hall projection (including `DASHMOD` account) |
+
+---
+
+## System Flow
+
+One path: member joins the floor during Bill 1 Round 1.
+
+1. **Moderator** sets stage to `BILL1_R1` and enables raise-hand → API stores a 5s window in memory and broadcasts `raiseHand:enabled`.
+2. **Member** calls `POST /hand/raise` inside the window → server validates window, speech quota, and duplicate queue rows → inserts `speaker_queue` with status `waiting`.
+3. **Window closes** (timeout or moderator disable) → broadcast `raiseHand:disabled`; new raises are rejected.
+4. **Moderator** approves a queue entry → `current_speaker_id` set, queue row `speaking`, `speaking_started_at` recorded.
+5. **Clients** refetch or receive Realtime updates → projection and dashboards show the active speaker; timer sync uses `current_speaker_started_at`.
+6. **Moderator** marks speech done → queue finalized, `speeches_count` incremented, floor cleared; judges can grade that turn per stage rules.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 20+
+- A Supabase project (Postgres + Realtime)
+- Environment variables (see below)
+
+### Database (required once per project)
+
+In **Supabase → SQL Editor**, run the entire file **`server/supabase_schema.sql`**. It resets Summit tables, applies RLS read policies, enables Realtime on the listed tables, and seeds demo users plus one active session.
+
+Confirm in **Table Editor**: exactly **one** `sessions` row has `is_active = true`, and columns `bill_1_data`, `bill_2_data`, `team_selections` exist.
+
+### Installation
+
+```bash
+git clone <repo-url>
+cd abhimat
+npm install
+cd server && npm install
+cd ../client && npm install
+```
+
+### Environment setup
+
+**Server** (`server/.env` — copy from `server/.env.example`):
+
+| Variable | Purpose |
+|----------|---------|
+| `SUPABASE_URL` | Project URL (must match client Supabase project) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role secret (server writes only) |
+| `JWT_SECRET` | Signing secret (min 32 characters) |
+| `CLIENT_URL` | Allowed CORS origins (e.g. `http://localhost:5173`) |
+| `PORT` | API port (default `3001`) |
+
+**Client** (`client/.env`):
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_SUPABASE_URL` | Same project as server |
+| `VITE_SUPABASE_ANON_KEY` | Anon key for Realtime subscriptions |
+| `VITE_API_URL` | API base (e.g. `http://localhost:3001`; dev can use Vite proxy without setting this) |
+
+### Running locally
+
+```bash
+# Terminal 1 — API (from repo root)
+npm run dev
+
+# Terminal 2 — UI
+npm run dev:client
+```
+
+Open `http://localhost:5173`. Vite proxies `/auth`, `/session`, `/hand`, `/queue`, `/speaker`, `/polls`, `/points`, `/party` to the API.
+
+**Demo logins** (after schema seed):
+
+| Member ID | Password |
+|-----------|----------|
+| `MOD00001` | `mod` |
+| `DASHMOD` | `dash` |
+| `JDG10001` | `jdg` |
+| `BJP10001` | `bjp` (party codes: `inc`, `aap`, `tmc`, …) |
+
+### Quality checks
+
+```bash
+npm run verify
+```
+
+Runs client lint, production build, and server syntax check. Deployment details: **`DEPLOYMENT.md`**. Product behavior reference: **`PRD.md`**.
+
+---
+
+## API Reference
+
+Non-obvious or contract-heavy routes only.
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/hand/raise` | member | Enqueue during active 5s window; enforces `speeches_count < 2` and no duplicate waiting/speaking row |
+| PATCH | `/session/raise-hand` | moderator | Toggle buzzer; opens/closes in-memory window and broadcasts |
+| PATCH | `/speaker/approve/:queueId` | moderator | Grants floor; sets `current_speaker_id` and `speaking_started_at` |
+| POST | `/session/stage` | moderator | Updates active session stage; resolves active row server-side |
+| POST | `/session/bill-data` | moderator | Persists bill name/summary JSON (`bill_number` 1 or 2) |
+| GET | `/session/active` | any authenticated | Active session + speaker embed + `current_speaker_started_at` |
+
+---
 
 ## Repository layout
 
 ```text
-.github/             # CI (client lint+build, server check)
-├── client/          # Vite React app
-├── server/          # Express API + SQL — **`server/supabase_schema.sql`** = full DB (run once)
-├── PRD.md
-├── DEPLOYMENT.md
-└── package.json     # dev, build, lint, check, verify
+.github/workflows/     # CI (client lint + build, server check)
+client/                 # React SPA
+server/                 # Express API
+  supabase_schema.sql   # Canonical database (run once in Supabase)
+PRD.md                  # As-built product spec
+DEPLOYMENT.md           # Hosting and Docker notes
 ```
 
-The checkout folder on disk may still be named `abhimat` if cloned from the original remote; the **product name in the app and docs is Summit**.
+---
 
-## Local development
+## Known Limitations
 
-1. **Supabase:** create a project. In **SQL Editor**, run **`server/supabase_schema.sql` once** (full reset of Summit tables + seeds; see the banner at the top of that file). Optional: `server/migration_*.sql` only if you **cannot** drop data and need incremental patches.
-2. **Server:** `cd server && cp .env.example .env` — fill `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`. Optional: `CLIENT_URL=http://localhost:5173`.
-3. **Client:** `cd client` — `.env` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=http://localhost:3001` (or rely on Vite proxy for API paths in dev).
-4. **Run API:** from repo root `npm run dev` (starts server with watch), or `cd server && npm run dev`.
-5. **Run UI:** `cd client && npm run dev` (Vite proxies `/auth`, `/session`, `/hand`, `/queue`, `/speaker`, `/polls`, `/points`, `/moderator`, `/party` to `:3001`).
+- Raise-hand window and access flags live **in memory** on the API process; restart clears them and the moderator must re-enable the buzzer.
+- **Single API instance** is assumed for consistent window enforcement; horizontal scaling needs shared window state (e.g. Redis) not implemented here.
+- Stage/bill mutations target the **single** `is_active` session; misconfigured DB state (zero or multiple active rows) breaks floor control until corrected in Supabase.
+- Realtime broadcast channel names must stay aligned between server sends and client subscriptions; mismatches delay UI updates until the next `GET /session/active` refetch.
+- No automated integration test suite in-repo for concurrent hand-raise or queue races.
 
-**Quality gate (from repo root):** `npm run verify` — ESLint + client production build + server syntax check.
+---
 
-## API surface (summary)
+## What I Would Do Next
 
-- **Auth:** `POST /auth/login`, `GET /auth/me`
-- **Session:** `GET /session/active` (includes `current_speaker_started_at` when someone is on the floor), `POST /session/stage`, `POST /session/bill-data`, `POST /session/team-selection`, raise-hand status and toggle
-- **Queue / hand:** `GET /queue`, `POST /hand/raise`, `DELETE /hand/lower`
-- **Speaker:** approve, revoke, done
-- **Polls / points / moderator grading / party:** see `server/src/routes/`
+- Persist raise-hand window open/close timestamps on `sessions` (or a small `session_controls` table) so restarts and multi-instance deploys can recover window state.
+- Add a unique partial index or constraint preventing duplicate `waiting`/`speaking` queue rows per `(session_id, member_id)`.
+- Add an integration test that hammers concurrent `POST /hand/raise` against one open window to lock arbitration behavior.
+
+---
 
 ## License
 
-Private / team use unless you add an explicit license file.
-
-## Login troubleshooting
-
-Use **Member ID** + **password** (passwords are compared **case-insensitively**; member IDs are normalized to **uppercase**).
-
-**Seeded accounts** (included when you run `server/supabase_schema.sql`):
-
-| Member ID | Password |
-|-------------|----------|
-| `MOD00001` | `mod` |
-| `DASHMOD` | `dash` |
-| `JDG10001` (or `JDG10002`, `JDG10003`) | `jdg` |
-| `BJP10001`, … | `bjp` (same idea: `inc`, `aap`, `tmc` for those parties) |
-
-If login still fails:
-
-1. **Schema drift:** If the API mentions `password_hash` / `42703` or bill/session columns are missing, run **`server/supabase_schema.sql` once** in **Supabase → SQL Editor** (this resets Summit tables and reapplies the full schema). Then confirm **`members`** and **`sessions`** in **Table Editor** match the file.
-2. **Diagnose from the server folder:** `npm run verify:auth` — checks connectivity, `MOD00001` row, and bcrypt for password `mod`.
-3. **Watch the API terminal** when you click login — real database/config issues log as `[auth/login] Supabase error:` and return **500** with `Unable to verify credentials` (not 401). In dev, the red banner may include a **`hint`** (open the failed **`POST /auth/login`** in Network → Response).
-4. Confirm **`server/.env`** has correct `SUPABASE_URL` and **`SUPABASE_SERVICE_ROLE_KEY`** — use the **service_role** secret from Supabase **Project Settings → API** (long `eyJ…` key), **not** the `anon` key.
-5. In Supabase **Table Editor → `members`**, confirm a row exists for that `member_id` and that `password_hash` is set (or leave null to use legacy “password = party name” for members only).
-6. Confirm the browser is calling your API: dev uses Vite proxy to `localhost:3001`; production needs **`VITE_API_URL`** set to the public API URL.
-
-## Session / bill setup troubleshooting
-
-If **bill save fails**, **stage stays on Waiting**, or columns like **`bill_1_data`** are missing:
-
-1. Run **`server/supabase_schema.sql` once** in **Supabase → SQL Editor** (canonical full schema + seeds). This is the same fix as login/schema drift when you can reset session data.
-2. Confirm **Table Editor → `sessions`** has **`bill_1_data`**, **`bill_2_data`**, **`team_selections`**, **`stage`**, and exactly **one row** with **`is_active = true`**.
-3. **Incremental only (keep old rows):** try `server/migration_sessions_summit_columns.sql` — prefer the full schema file when possible.
+MIT
